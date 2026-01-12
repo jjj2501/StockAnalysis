@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockAnalysis AI - 智能选股助手</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">StockAnalysis AI</div>
+            <p class="subtitle">基于 Transformers + LSTM 与 LLM 的智能投资分析工具</p>
+        </header>
+
+        <section class="search-section">
+            <div class="search-box">
+                <input type="text" id="symbol-input" placeholder="输入股票代码 (例如 600519)" value="600519">
+                <button id="analyze-btn" onclick="analyzeStock()">开始分析</button>
+            </div>
+            <div class="examples">
+                <span>热门:</span>
+                <span class="tag" onclick="useSymbol('600519')">贵州茅台</span>
+                <span class="tag" onclick="useSymbol('000001')">平安银行</span>
+                <span class="tag" onclick="useSymbol('601318')">中国平安</span>
+            </div>
+        </section>
+
+        <section id="loading" class="hidden">
+            <div class="spinner"></div>
+            <p>正在拉取数据并运行 AI 模型...</p>
+        </section>
+
+        <section id="results" class="hidden">
+            <div class="grid">
+                <!-- 预测卡片 -->
+                <div class="card prediction-card">
+                    <h3>AI 预测模型</h3>
+                    <div class="prediction-value" id="pred-trend">--</div>
+                    <div class="metric-row">
+                        <div class="metric">
+                            <span class="label">当前价格 (CNY)</span>
+                            <span class="value" id="curr-price">--</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">模型置信度</span>
+                            <span class="value" id="confidence">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 走势图 -->
+                <div class="card chart-card">
+                    <h3>近30日股价走势</h3>
+                    <div class="chart-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分析报告 -->
+            <div class="card report-card">
+                <h3>AI 投资分析日报</h3>
+                <div id="report-content" class="markdown-body"></div>
+            </div>
+        </section>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
