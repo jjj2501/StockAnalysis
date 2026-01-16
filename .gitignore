@@ -16,6 +16,8 @@ uv.exe
 # Models
 *.pth
 backend/models/*.pth
+*.pt
+*.bin
 
 # Logs
 *.log
