@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Binaries
+uv.exe
+*.exe
+
+# Models
+*.pth
+backend/models/*.pth
+*.pt
+*.bin
+
+# Logs
+*.log

@@ -7,13 +7,20 @@ from .model import HybridModel
 from .data import DataFetcher
 
 class StockEngine:
-    def __init__(self, model_dir="backend/models"):
+    def __init__(self, model_dir="backend/models", device=None):
         self.model_dir = model_dir
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
             
         self.data_fetcher = DataFetcher()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # 设备选择逻辑
+        if device:
+            self.device = torch.device(device)
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            
+        print(f"StockEngine initialized on device: {self.device}")
         
         # 模型超参数
         self.input_dim = 12 # 对应 data.py 中的 feature_cols 数量
@@ -30,7 +37,9 @@ class StockEngine:
 
     def train(self, symbol: str):
         """训练指定股票的模型"""
-        print(f"Start training for {symbol}...")
+        import time
+        start_time = time.time()
+        print(f"Start training for {symbol} on {self.device}...")
         df = self.data_fetcher.get_stock_data(symbol)
         df = self.data_fetcher.add_technical_indicators(df)
         X, y, scaler = self.data_fetcher.prepare_data_for_training(df, seq_length=self.seq_length)
@@ -68,7 +77,10 @@ class StockEngine:
         # 保存模型
         model_path = os.path.join(self.model_dir, f"{symbol}_model.pth")
         torch.save(model.state_dict(), model_path)
+        end_time = time.time()
+        duration = end_time - start_time
         print(f"Model saved to {model_path}")
+        print(f"Training finished in {duration:.2f} seconds.")
         return model_path
 
     def predict(self, symbol: str) -> dict:
