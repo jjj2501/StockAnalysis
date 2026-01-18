@@ -21,3 +21,6 @@ backend/models/*.pth
 
 # Logs
 *.log
+
+# 市场数据缓存
+backend/data/

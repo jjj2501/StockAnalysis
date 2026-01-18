@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>市场数据管理中心 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body class="factors-page">
+    <div id="global-loading" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-msg">正在同步数据...</div>
+    </div>
+
+    <div class="container">
+        <header class="factors-header">
+            <div class="nav-back">
+                <a href="index.html" class="btn-back">← 返回首页</a>
+            </div>
+            <h1>市场数据中心</h1>
+            <p class="subtitle">预拉取历史数据，加速因子分析速度</p>
+        </header>
+
+        <section class="card data-manager-card">
+            <div class="card-header">
+                <h3>受监控股票池</h3>
+                <div class="actions">
+                    <button class="btn-small" onclick="syncAllStocks()">一键同步全量</button>
+                    <button class="btn-small primary" onclick="showAddModal()">添加股票</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="data-table">
+                    <thead>
+                        <tr>
+                            <th>股票代码</th>
+                            <th>同步状态</th>
+                            <th>最新数据日期</th>
+                            <th>最后操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-body">
+                        <!-- 数据由 JS 填充 -->
+                        <tr>
+                            <td colspan="4" style="text-align:center; padding: 2rem;">正在加载列表...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- 添加股票的简单弹窗 (Inline) -->
+    <div id="add-modal" class="loading-overlay hidden">
+        <div class="card" style="min-width: 300px; text-align: center;">
+            <h3>添加监控股票</h3>
+            <input type="text" id="modal-symbol" placeholder="输入股票代码" style="margin: 1rem 0; width: 100%;">
+            <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                <button class="btn-small" onclick="hideAddModal()">取消</button>
+                <button class="btn-small primary" onclick="doAddStock()">确认添加</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // 初始化数据管理页面
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.location.pathname.includes('data.html')) {
+                loadMonitoredStocks();
+            }
+        });
+    </script>
+</body>
+
+</html>
