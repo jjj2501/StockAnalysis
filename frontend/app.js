@@ -29,6 +29,30 @@ function hideLoading() {
     }
 }
 
+function updateProgress(progress, status) {
+    const container = document.getElementById('progress-container');
+    const indicator = document.getElementById('progress-indicator');
+    const statusText = document.getElementById('progress-status');
+    const percentText = document.getElementById('progress-percent');
+
+    if (container.classList.contains('hidden')) {
+        container.classList.remove('hidden');
+    }
+
+    indicator.style.width = `${progress}%`;
+    statusText.textContent = status;
+    percentText.textContent = `${progress}%`;
+
+    if (progress >= 100) {
+        setTimeout(() => {
+            container.classList.add('hidden');
+            // 重置进度
+            indicator.style.width = '0%';
+            percentText.textContent = '0%';
+        }, 2000);
+    }
+}
+
 async function initFactorsPage() {
     const params = new URLSearchParams(window.location.search);
     const symbol = params.get('symbol');
@@ -68,6 +92,23 @@ async function analyzeStock() {
     resultsEl.classList.add('hidden');
     if (btn) btn.disabled = true;
 
+    // 开启 SSE 进度监听
+    const eventSource = new EventSource(`${API_BASE}/progress/${symbol}`);
+    eventSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            updateProgress(data.progress, data.status);
+            if (data.progress >= 100) {
+                eventSource.close();
+            }
+        } catch (e) {
+            console.error("SSE parsing error:", e);
+        }
+    };
+    eventSource.onerror = () => {
+        eventSource.close();
+    };
+
     try {
         // 并行调用接口
         const responsePromise = fetch(`${API_BASE}/analyze/${symbol}`);
@@ -86,6 +127,7 @@ async function analyzeStock() {
     } catch (e) {
         alert("过程出错: " + e.message);
         console.error(e);
+        updateProgress(0, "分析出错");
     } finally {
         hideLoading();
         if (btn) btn.disabled = false;

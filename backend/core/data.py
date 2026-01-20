@@ -2,7 +2,7 @@ import akshare as ak
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 import datetime
 import logging
 from pathlib import Path
@@ -121,47 +121,65 @@ class DataFetcher:
         # 1. 尝试加载本地缓存
         cached_df = self._load_cache(symbol)
         
+        requested_start = pd.to_datetime(start_date, format='%Y%m%d')
+        requested_end = pd.to_datetime(end_date, format='%Y%m%d')
+
         if cached_df is not None and not cached_df.empty:
-            # 2. 有缓存，检查是否需要增量更新
+            # 2. 有缓存，检查是否需要更新
+            cache_min_date = cached_df['date'].min()
             cache_max_date = cached_df['date'].max()
-            requested_end = pd.to_datetime(end_date, format='%Y%m%d')
             
-            if cache_max_date >= requested_end:
-                # 缓存数据已覆盖请求范围，直接返回
-                logger.info(f"{symbol} 缓存数据已是最新 (截止 {cache_max_date.strftime('%Y-%m-%d')})")
-                return cached_df[(cached_df['date'] >= pd.to_datetime(start_date, format='%Y%m%d')) & 
-                                 (cached_df['date'] <= requested_end)]
-            
-            # 需要增量更新：从缓存最后日期的下一天开始请求
-            incremental_start = (cache_max_date + pd.Timedelta(days=1)).strftime('%Y%m%d')
-            logger.info(f"{symbol} 增量更新: {incremental_start} - {end_date}")
-            
-            new_df = self._fetch_from_remote(symbol, incremental_start, end_date)
-            
-            if not new_df.empty:
-                # 3. 合并数据并去重
-                combined_df = pd.concat([cached_df, new_df], ignore_index=True)
-                combined_df = combined_df.drop_duplicates(subset=['date'], keep='last')
-                combined_df = combined_df.sort_values('date').reset_index(drop=True)
+            # 如果缓存能覆盖请求范围，直接返回
+            if cache_min_date <= requested_start and cache_max_date >= requested_end:
+                logger.info(f"{symbol} 缓存数据已覆盖请求范围 (从 {cache_min_date.strftime('%Y-%m-%d')} 到 {cache_max_date.strftime('%Y-%m-%d')})")
+                return cached_df[(cached_df['date'] >= requested_start) & (cached_df['date'] <= requested_end)]
+
+            # 如果只有结束时间落后，进行增量更新
+            if cache_min_date <= requested_start and cache_max_date < requested_end:
+                incremental_start = (cache_max_date + pd.Timedelta(days=1)).strftime('%Y%m%d')
+                logger.info(f"{symbol} 增量更新结束日期: {incremental_start} - {end_date}")
+                new_df = self._fetch_from_remote(symbol, incremental_start, end_date)
                 
-                # 保存更新后的缓存
+                if not new_df.empty:
+                    combined_df = pd.concat([cached_df, new_df], ignore_index=True)
+                    combined_df = combined_df.drop_duplicates(subset=['date'], keep='last').sort_values('date').reset_index(drop=True)
+                    self._save_cache(symbol, combined_df)
+                    return combined_df[(combined_df['date'] >= requested_start) & (combined_df['date'] <= requested_end)]
+            
+            # 简化处理：如果起始时间也早于缓存，则重新拉取全部范围 (或者以后可以实现双向增量)
+            logger.info(f"{symbol} 缓存范围不足 (缓存起始 {cache_min_date.strftime('%Y-%m-%d')})，重新拉取整体数据")
+            df = self._fetch_from_remote(symbol, start_date, end_date)
+            if not df.empty:
+                # 合并缓存以防丢失其他部分
+                combined_df = pd.concat([cached_df, df], ignore_index=True)
+                combined_df = combined_df.drop_duplicates(subset=['date'], keep='last').sort_values('date').reset_index(drop=True)
                 self._save_cache(symbol, combined_df)
-                
-                return combined_df[(combined_df['date'] >= pd.to_datetime(start_date, format='%Y%m%d')) & 
-                                   (combined_df['date'] <= requested_end)]
+                return combined_df[(combined_df['date'] >= requested_start) & (combined_df['date'] <= requested_end)]
             else:
-                # 没有新数据，返回缓存
-                return cached_df[(cached_df['date'] >= pd.to_datetime(start_date, format='%Y%m%d')) & 
-                                 (cached_df['date'] <= requested_end)]
+                return cached_df[(cached_df['date'] >= requested_start) & (cached_df['date'] <= requested_end)]
         else:
             # 4. 无缓存，下载全部数据
-            logger.info(f"{symbol} 无本地缓存，从远程下载全部数据")
+            logger.info(f"{symbol} 无本地缓存，从远程下载数据")
             df = self._fetch_from_remote(symbol, start_date, end_date)
-            
             if not df.empty:
                 self._save_cache(symbol, df)
-            
             return df
+
+    def get_batch_stock_data(self, symbols: List[str], start_date: str = "20200101", end_date: str = "20251231") -> Dict[str, pd.DataFrame]:
+        """
+        并发获取多只股票数据 (性能优化)
+        """
+        results = {}
+        with ThreadPoolExecutor(max_workers=min(len(symbols), 10)) as executor:
+            future_to_symbol = {executor.submit(self.get_stock_data, sym, start_date, end_date): sym for sym in symbols}
+            for future in as_completed(future_to_symbol):
+                symbol = future_to_symbol[future]
+                try:
+                    results[symbol] = future.result()
+                except Exception as e:
+                    logger.error(f"批量获取 {symbol} 失败: {e}")
+                    results[symbol] = pd.DataFrame()
+        return results
 
     def add_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """添加技术指标"""

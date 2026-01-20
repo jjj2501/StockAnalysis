@@ -9,6 +9,10 @@ class BaseLLM(abc.ABC):
     def generate_report(self, symbol: str, data: dict) -> str:
         pass
 
+    @abc.abstractmethod
+    def generate_backtest_report(self, symbol: str, strategy: str, metrics: dict) -> str:
+        pass
+
 class OllamaLLM(BaseLLM):
     def __init__(self, model_name="qwen3:1.7b"):
         # 默认尝试使用 qwen2.5, 用户需自行 pull
@@ -32,6 +36,47 @@ class OllamaLLM(BaseLLM):
             return "错误：无法连接到本地 Ollama 服务。请确保 Ollama 已启动 (localhost:11434)。"
         except Exception as e:
             return f"Error generating report: {str(e)}"
+
+    def generate_backtest_report(self, symbol: str, strategy: str, metrics: dict) -> str:
+        prompt = self._build_backtest_prompt(symbol, strategy, metrics)
+        print(f"DEBUG: Generating backtest report for {symbol} using {self.model_name}")
+        try:
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False
+            }
+            print(f"DEBUG: Sending request to Ollama: {self.api_url}")
+            response = requests.post(self.api_url, json=payload, timeout=90) 
+            response.raise_for_status()
+            result = response.json()
+            analysis = result.get("response", "Error: No response field in Ollama output")
+            print(f"DEBUG: Ollama response received metadata: length={len(analysis)}")
+            return analysis
+        except Exception as e:
+            error_msg = f"Error generating backtest report: {str(e)}"
+            print(f"DEBUG: {error_msg}")
+            return error_msg
+
+    def _build_backtest_prompt(self, symbol: str, strategy: str, metrics: dict) -> str:
+        return f"""
+        你是一位资深的量化交易专家。请对股票 {symbol} 使用 {strategy} 策略的回测结果进行深度评价。
+        
+        【回测绩效指标】
+        - 总收益率: {metrics.get('total_return_pct', 0):.2f}%
+        - 年化收益率: {metrics.get('annual_return_pct', 0):.2f}%
+        - 最大回撤: {metrics.get('max_drawdown_pct', 0):.2f}%
+        - 夏普比率: {metrics.get('sharpe_ratio', 0):.2f}
+        - 总交易次数: {metrics.get('total_trades', 0)}
+        - 胜率: {metrics.get('win_rate', 0)*100:.2f}%
+        
+        【分析要求】
+        1. **收益风险比评价**: 根据收益率和回撤、夏普比率，评价该策略在此历史时段的表现是否稳健。
+        2. **策略适用性**: 简述该策略是否适合该股票的波动特性。
+        3. **优化建议**: 针对回测表现，提出可能的优化方向（如调整参数、增加过滤条件等）。
+        
+        请用中文回答，保持专业客观。
+        """
 
     def _build_prompt(self, symbol: str, data: dict) -> str:
         # 构建提示词
@@ -63,6 +108,17 @@ class ValidationLLM(BaseLLM):
         当前价格为 {data.get('current_price')}。
         
         注：这是测试模式生成的报告，请在本地安装 Ollama 并下载模型以获得真实AI分析。
+        """
+
+    def generate_backtest_report(self, symbol: str, strategy: str, metrics: dict) -> str:
+        return f"""
+        【模拟AI回测评价】
+        股票：{symbol} | 策略：{strategy}
+        回测表现分析：
+        - 总收益：{metrics.get('total_return_pct', 0):.2f}%
+        - 最大回撤：{metrics.get('max_drawdown_pct', 0):.2f}%
+        收益表现{"理想" if metrics.get('total_return_pct', 0) > 0 else "欠佳"}，最大回撤控制在 {metrics.get('max_drawdown_pct', 0):.2f}%。
+        建议：继续观察市场动态。
         """
 
 def get_llm_client(provider="ollama", model_name="qwen3:1.7b"):

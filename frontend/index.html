@@ -21,6 +21,8 @@
             <div class="logo">StockAnalysis AI</div>
             <p class="subtitle">基于 Transformers + LSTM 与 LLM 的智能投资分析工具</p>
             <nav class="top-nav">
+                <a href="index.html" class="nav-link">🏠 首页分析</a>
+                <a href="backtest.html" class="nav-link">📊 策略回测</a>
                 <a href="data.html" class="nav-link">⚙️ 数据中心</a>
             </nav>
         </header>
@@ -29,6 +31,15 @@
             <div class="search-box">
                 <input type="text" id="symbol-input" placeholder="输入股票代码 (例如 600519)" value="600519">
                 <button id="analyze-btn" onclick="analyzeStock()">开始分析</button>
+            </div>
+            <div id="progress-container" class="hidden">
+                <div class="progress-info">
+                    <span id="progress-status">准备中...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="progress-indicator"></div>
+                </div>
             </div>
             <div class="examples">
                 <span>热门:</span>

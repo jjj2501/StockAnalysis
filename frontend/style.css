@@ -39,6 +39,7 @@ header {
     font-weight: 700;
     background: linear-gradient(to right, #60a5fa, #a78bfa);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 0.5rem;
 }
@@ -264,6 +265,64 @@ button:disabled {
     border-radius: 50%;
     margin: 0 auto 1rem;
     animation: spin 1s linear infinite;
+}
+
+/* 进度条样式 */
+#progress-container {
+    margin: 1.5rem auto;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
+    padding: 1rem;
+    backdrop-filter: blur(4px);
+    max-width: 500px;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.8rem;
+    font-size: 0.85rem;
+}
+
+#progress-status {
+    color: var(--text-main);
+    font-weight: 500;
+}
+
+#progress-percent {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#progress-indicator {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    transition: width 0.3s ease;
+    border-radius: 4px;
 }
 
 @keyframes spin {

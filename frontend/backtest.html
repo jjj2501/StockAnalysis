@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略回测 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">StockAnalysis AI</div>
+            <p class="subtitle">策略回测看板：验证您的投资逻辑</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">🏠 首页分析</a>
+                <a href="backtest.html" class="nav-link active">📊 策略回测</a>
+                <a href="data.html" class="nav-link">⚙️ 数据中心</a>
+            </nav>
+        </header>
+
+        <section class="backtest-controls card">
+            <h3>回测配置</h3>
+            <div class="filter-row">
+                <div class="input-group">
+                    <label>股票代码</label>
+                    <input type="text" id="symbol" value="600519">
+                </div>
+                <div class="input-group">
+                    <label>开始日期</label>
+                    <input type="text" id="start-date" value="20230101" placeholder="YYYYMMDD">
+                </div>
+                <div class="input-group">
+                    <label>结束日期</label>
+                    <input type="text" id="end-date" value="20240101" placeholder="YYYYMMDD">
+                </div>
+                <div class="input-group">
+                    <label>策略类型</label>
+                    <select id="strategy">
+                        <option value="macd">MACD 金叉/死叉</option>
+                        <option value="rsi">RSI 超买超卖</option>
+                        <option value="ai">AI 模型预测 (演示)</option>
+                    </select>
+                </div>
+                <button id="run-backtest" class="primary-btn">运行回测</button>
+            </div>
+        </section>
+
+        <section id="backtest-results" class="hidden">
+            <!-- 统计看板 -->
+            <div class="grid">
+                <div class="card stat-card">
+                    <span class="label">总收益率</span>
+                    <span class="value" id="total-return">0%</span>
+                </div>
+                <div class="card stat-card">
+                    <span class="label">年化收益率</span>
+                    <span class="value" id="annual-return">0%</span>
+                </div>
+                <div class="card stat-card">
+                    <span class="label">最大回撤</span>
+                    <span class="value" id="max-drawdown">0%</span>
+                </div>
+                <div class="card stat-card">
+                    <span class="label">夏普比率</span>
+                    <span class="value" id="sharpe">0.0</span>
+                </div>
+            </div>
+
+            <!-- AI 策略诊断 -->
+            <div class="card analysis-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="margin: 0;">🤖 AI 策略诊断报告</h3>
+                    <button id="btn-generate-analysis" class="primary-btn hidden"
+                        style="padding: 0.4rem 1rem; font-size: 0.9rem;">
+                        ✨ 生成深度分析
+                    </button>
+                </div>
+                <div id="ai-backtest-analysis" class="report-content hidden">
+                    <!-- Report content will be injected here -->
+                </div>
+                <div id="ai-loading" class="hidden" style="color: #94a3b8; text-align: center; padding: 1rem;">
+                    正在调用大模型生成策略分析，请稍候...
+                </div>
+            </div>
+
+            <!-- 资产曲线图 -->
+            <div class="card chart-card">
+                <h3>净值曲线 (Equity Curve)</h3>
+                <div class="chart-container">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 交易流水 -->
+            <div class="card trades-card">
+                <h3>交易历史流水</h3>
+                <div class="table-container">
+                    <table id="trades-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>类型</th>
+                                <th>价格</th>
+                                <th>数量</th>
+                                <th>发生金额</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let equityChart = null;
+        let currentBacktestData = null;
+
+        document.getElementById('btn-generate-analysis').addEventListener('click', async () => {
+            if (!currentBacktestData) return;
+
+            const btn = document.getElementById('btn-generate-analysis');
+            const output = document.getElementById('ai-backtest-analysis');
+            const loading = document.getElementById('ai-loading');
+
+            btn.disabled = true;
+            loading.classList.remove('hidden');
+            output.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/backtest/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: currentBacktestData.symbol,
+                        strategy: currentBacktestData.strategy,
+                        summary: currentBacktestData.result.summary
+                    })
+                });
+
+                if (!response.ok) throw new Error('分析请求失败');
+
+                const data = await response.json();
+                let report = data.report || "未能生成报告";
+                // 简单的 Markdown 处理 (如果没引用 marked.js，这里直接显示文本即可，或者假设 app.js 里已有 marked)
+                // 注意：backtest.html 目前没引用 marked.js，这里暂时直接显示 raw text 或简单替换
+                // 若要支持 markdown，需在 head 引入 marked.js
+                // report = report.replace(/<think>[\s\S]*?<\/think>/g, '').trim(); 
+
+                output.innerText = report; // 使用 innerText 防止 XSS，简单起见
+                output.classList.remove('hidden');
+            } catch (e) {
+                alert("生成分析失败: " + e.message);
+            } finally {
+                btn.disabled = false;
+                loading.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('run-backtest').addEventListener('click', async () => {
+            // ... (keep existing logic start)
+            const symbol = document.getElementById('symbol').value;
+            const start = document.getElementById('start-date').value;
+            const end = document.getElementById('end-date').value;
+            const strategy = document.getElementById('strategy').value;
+
+            const btn = document.getElementById('run-backtest');
+            btn.disabled = true;
+            btn.innerText = '回测中...';
+
+            // 重置分析区域
+            document.getElementById('ai-backtest-analysis').classList.add('hidden');
+            document.getElementById('btn-generate-analysis').classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/backtest/${symbol}?start_date=${start}&end_date=${end}&strategy_type=${strategy}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || '回测接口响应异常');
+                }
+
+                if (data.result && data.result.error) {
+                    throw new Error(data.result.error);
+                }
+
+                currentBacktestData = data; // Store data
+                displayResults(data);
+                document.getElementById('backtest-results').classList.remove('hidden');
+            } catch (err) {
+                console.error(err);
+                alert('回测失败: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '运行回测';
+            }
+        });
+
+        function displayResults(data) {
+            const res = data.result;
+            if (!res || !res.summary) {
+                console.error('Invalid results:', res);
+                return;
+            }
+            const summary = res.summary;
+            document.getElementById('total-return').innerText = summary.total_return_pct.toFixed(2) + '%';
+            document.getElementById('annual-return').innerText = summary.annual_return_pct.toFixed(2) + '%';
+            document.getElementById('max-drawdown').innerText = summary.max_drawdown_pct.toFixed(2) + '%';
+            document.getElementById('sharpe').innerText = summary.sharpe_ratio.toFixed(2);
+
+            // 显示生成按钮，隐藏旧内容
+            document.getElementById('btn-generate-analysis').classList.remove('hidden');
+            document.getElementById('ai-backtest-analysis').innerText = '';
+
+            // 资产颜色逻辑
+            document.getElementById('total-return').style.color = summary.total_return_pct >= 0 ? 'var(--up-color, #ef4444)' : 'var(--down-color, #10b981)';
+
+            // 绘制图表
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            const labels = res.equity_curve.map(item => item.date);
+            const values = res.equity_curve.map(item => item.equity);
+
+            if (equityChart) equityChart.destroy();
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '账户总资产 (Equity)',
+                        data: values,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+
+            // 填充流水
+            const tableBody = document.getElementById('trades-body');
+            tableBody.innerHTML = res.trades.map(t => `
+                <tr>
+                    <td>${t.date}</td>
+                    <td class="${t.type === 'BUY' ? 'up-text' : 'down-text'}">${t.type}</td>
+                    <td>${t.price.toFixed(2)}</td>
+                    <td>${t.shares}</td>
+                    <td>${Number(t.cost ?? t.revenue ?? 0).toFixed(2)}</td>
+                </tr>
+            `).join('');
+        }
+    </script>
+
+    <style>
+        .filter-row {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .input-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #64748b;
+        }
+
+        .input-group input,
+        .input-group select {
+            padding: 0.6rem 0.8rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+
+        .primary-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .primary-btn:hover {
+            background: #2563eb;
+        }
+
+        .primary-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+
+        .stat-card .label {
+            display: block;
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .up-text {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .down-text {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .report-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            color: #f1f5f9;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: inherit;
+        }
+    </style>
+</body>
+
+</html>
