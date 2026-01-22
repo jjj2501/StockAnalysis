@@ -1,4 +1,5 @@
 import akshare as ak
+import os
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -29,6 +30,13 @@ class DataFetcher:
         # 确保缓存目录存在
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"数据缓存目录: {self.cache_dir}")
+    
+    def _clear_proxy(self):
+        """临时清除系统代理配置，防止 akshare 连接失败"""
+        proxy_vars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
+        for var in proxy_vars:
+            if var in os.environ:
+                del os.environ[var]
     
     def _get_cache_path(self, symbol: str) -> Path:
         """获取指定股票代码的缓存文件路径"""
@@ -81,6 +89,7 @@ class DataFetcher:
         try:
             # akshare stock_zh_a_hist 接口获取个股历史数据
             # adjust="qfq" 代表前复权
+            self._clear_proxy()
             df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, end_date=end_date, adjust="qfq")
             if df is None or df.empty:
                 logger.warning(f"远程无数据: {symbol} ({start_date} - {end_date})")
@@ -372,6 +381,7 @@ class DataFetcher:
         """获取基本面与成长因子 (优化: 优先使用个股实时数据)"""
         try:
             # 尝试使用个股实时行情接口 (通常比全量快)
+            self._clear_proxy()
             spot_df = ak.stock_zh_a_spot_em()
             stock_spot = spot_df[spot_df['代码'] == symbol]
             if not stock_spot.empty:
@@ -390,6 +400,7 @@ class DataFetcher:
     def _fetch_northbound(self, symbol: str) -> dict:
         """获取北上资金因子"""
         try:
+            self._clear_proxy()
             hsgt_df = ak.stock_hsgt_individual_em(symbol=symbol)
             if not hsgt_df.empty:
                 latest_hsgt = hsgt_df.iloc[0]
