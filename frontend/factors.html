@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全维度量化因子分析 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body class="factors-page">
+    <div id="global-loading" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-msg">正在努力分析中...</div>
+    </div>
+    <div class="container">
+        <header class="factors-header">
+            <div class="nav-back">
+                <a href="index.html" class="btn-back">← 返回首页</a>
+            </div>
+            <h1 id="stock-title">量化因子深度分析</h1>
+            <p class="subtitle" id="stock-info">正在加载数据...</p>
+        </header>
+
+        <!-- 分类筛选 Tab -->
+        <div class="factor-tabs detail-tabs">
+            <button class="tab-btn active" data-cat="all">全部维度</button>
+            <button class="tab-btn" data-cat="technical">技术指标</button>
+            <button class="tab-btn" data-cat="fundamental">基本面评价</button>
+            <button class="tab-btn" data-cat="sentiment">市场情绪</button>
+            <button class="tab-btn" data-cat="northbound">北上资金流</button>
+        </div>
+
+        <section id="factors-container" class="factors-grid">
+            <!-- 由 app.js 动态渲染 -->
+            <div class="factor-group" id="tech-factors">
+                <h4>技术面</h4>
+                <div class="factor-list"></div>
+            </div>
+            <div class="factor-group" id="fundamental-factors">
+                <h4>基本面</h4>
+                <div class="factor-list"></div>
+            </div>
+            <div class="factor-group" id="sentiment-factors">
+                <h4>市场情绪</h4>
+                <div class="factor-list"></div>
+            </div>
+            <div class="factor-group" id="northbound-factors">
+                <h4>北上资金</h4>
+                <div class="factor-list"></div>
+            </div>
+        </section>
+
+        <footer class="factors-footer">
+            <p>数据更新日期: <span id="update-date">--</span></p>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>

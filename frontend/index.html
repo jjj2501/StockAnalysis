@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,17 +10,36 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
+
 <body>
+    <div id="global-loading" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-msg">正在努力分析中...</div>
+    </div>
     <div class="container">
         <header>
             <div class="logo">StockAnalysis AI</div>
             <p class="subtitle">基于 Transformers + LSTM 与 LLM 的智能投资分析工具</p>
+            <nav class="top-nav">
+                <a href="index.html" class="nav-link">🏠 首页分析</a>
+                <a href="backtest.html" class="nav-link">📊 策略回测</a>
+                <a href="data.html" class="nav-link">⚙️ 数据中心</a>
+            </nav>
         </header>
 
         <section class="search-section">
             <div class="search-box">
                 <input type="text" id="symbol-input" placeholder="输入股票代码 (例如 600519)" value="600519">
                 <button id="analyze-btn" onclick="analyzeStock()">开始分析</button>
+            </div>
+            <div id="progress-container" class="hidden">
+                <div class="progress-info">
+                    <span id="progress-status">准备中...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="progress-indicator"></div>
+                </div>
             </div>
             <div class="examples">
                 <span>热门:</span>
@@ -66,8 +86,65 @@
                 <h3>AI 投资分析日报</h3>
                 <div id="report-content" class="markdown-body"></div>
             </div>
+
+            <!-- 量化因子分析 -->
+            <div class="card factors-card">
+                <div class="card-header">
+                    <h3>全维度量化因子分析</h3>
+                    <a href="#" id="view-factors-btn" class="view-more">查看详情 →</a>
+                </div>
+                <!-- 分类筛选 Tab -->
+                <div class="factor-tabs">
+                    <button class="tab-btn active" data-cat="all">全部</button>
+                    <button class="tab-btn" data-cat="technical">技术面</button>
+                    <button class="tab-btn" data-cat="fundamental">基本面</button>
+                    <button class="tab-btn" data-cat="sentiment">情绪面</button>
+                    <button class="tab-btn" data-cat="northbound">北上资金</button>
+                </div>
+                <div class="factors-grid">
+                    <div class="factor-group" id="tech-factors">
+                        <h4>技术面</h4>
+                        <div class="factor-list"></div>
+                    </div>
+                    <div class="factor-group" id="fundamental-factors">
+                        <h4>基本面</h4>
+                        <div class="factor-list"></div>
+                    </div>
+                    <div class="factor-group" id="sentiment-factors">
+                        <h4>市场情绪</h4>
+                        <div class="factor-list"></div>
+                    </div>
+                    <div class="factor-group" id="northbound-factors">
+                        <h4>北上资金</h4>
+                        <div class="factor-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 历史行情数据 -->
+            <div class="card history-card">
+                <h3>历史行情数据 (近30日)</h3>
+                <div class="table-container">
+                    <table id="history-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>开盘</th>
+                                <th>最高</th>
+                                <th>最低</th>
+                                <th>收盘</th>
+                                <th>成交量</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body">
+                            <!-- 数据将由 JS 填充 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
     </div>
     <script src="app.js"></script>
 </body>
+
 </html>
