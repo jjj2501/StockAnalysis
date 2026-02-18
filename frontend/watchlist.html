@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自选股 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="index.html" class="sidebar-logo">
+                    <div class="logo-icon">SA</div>
+                    <span class="logo-text">StockAnalysis</span>
+                </a>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">主菜单</div>
+                    <a href="index.html" class="nav-item">
+                        <i>&#128200;</i>
+                        <span>股票分析</span>
+                    </a>
+                    <a href="backtest.html" class="nav-item">
+                        <i>&#128202;</i>
+                        <span>策略回测</span>
+                    </a>
+                    <a href="watchlist.html" class="nav-item active">
+                        <i>&#11088;</i>
+                        <span>自选股</span>
+                    </a>
+                    <a href="portfolio.html" class="nav-item">
+                        <i>&#128179;</i>
+                        <span>投资组合</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">数据</div>
+                    <a href="data.html" class="nav-item">
+                        <i>&#128451;</i>
+                        <span>数据中心</span>
+                    </a>
+                    <a href="factors.html" class="nav-item">
+                        <i>&#128269;</i>
+                        <span>因子分析</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">系统</div>
+                    <a href="settings.html" class="nav-item">
+                        <i>&#9881;</i>
+                        <span>个人设置</span>
+                    </a>
+                    <a href="#" class="nav-item" onclick="showApiDocs(); return false;">
+                        <i>&#128196;</i>
+                        <span>API文档</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-card" onclick="toggleUserMenu()">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-info">
+                        <div class="user-name" id="user-name">未登录</div>
+                        <div class="user-role" id="user-role">请先登录</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-header">
+                <h1 class="page-title">自选股</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="showAddStock()">
+                        <i>&#43;</i> 添加自选股
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-area">
+                <div class="grid grid-4 mb-3">
+                    <div class="card stat-card">
+                        <div class="stat-icon primary">&#11088;</div>
+                        <div class="stat-label">自选股数量</div>
+                        <div class="stat-value" id="watchlist-count">0</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-icon success">&#9650;</div>
+                        <div class="stat-label">上涨股票</div>
+                        <div class="stat-value" id="up-count">0</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-icon danger">&#9660;</div>
+                        <div class="stat-label">下跌股票</div>
+                        <div class="stat-value" id="down-count">0</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-icon warning">&#128200;</div>
+                        <div class="stat-label">平均涨幅</div>
+                        <div class="stat-value" id="avg-change">--</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">我的自选股</h3>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" class="form-input" id="search-watchlist" placeholder="搜索..." style="width: 200px;">
+                            <select class="form-input" id="sort-select" style="width: 120px;">
+                                <option value="default">默认排序</option>
+                                <option value="change-desc">涨幅从高到低</option>
+                                <option value="change-asc">涨幅从低到高</option>
+                                <option value="price-desc">价格从高到低</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="watchlist-empty" class="empty-state">
+                            <div class="empty-state-icon">&#11088;</div>
+                            <div class="empty-state-title">暂无自选股</div>
+                            <div class="empty-state-desc">点击"添加自选股"开始关注您感兴趣的股票</div>
+                        </div>
+                        <div id="watchlist-list">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>股票代码</th>
+                                        <th>股票名称</th>
+                                        <th>最新价</th>
+                                        <th>涨跌幅</th>
+                                        <th>今开</th>
+                                        <th>最高</th>
+                                        <th>最低</th>
+                                        <th>添加时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="watchlist-table"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="add-stock-modal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+         background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div class="card" style="width: 400px; max-width: 90%;">
+            <div class="card-header">
+                <h3 class="card-title">添加自选股</h3>
+                <button onclick="closeAddStock()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">股票代码</label>
+                    <input type="text" class="form-input" id="add-symbol" placeholder="输入股票代码 (如 600519)">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">备注 (可选)</label>
+                    <input type="text" class="form-input" id="add-note" placeholder="添加备注信息">
+                </div>
+                <p class="form-hint">热门股票: 600519 贵州茅台, 000001 平安银行, 601318 中国平安</p>
+            </div>
+            <div class="card-footer" style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeAddStock()">取消</button>
+                <button class="btn btn-primary" onclick="addStock()">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="user-dropdown" class="dropdown-menu" style="display: none;">
+        <a href="settings.html" class="dropdown-item">&#9881; 个人设置</a>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item" onclick="logout()" style="color: var(--danger);">&#128682; 退出登录</button>
+    </div>
+
+    <script>
+        let watchlist = [];
+        
+        function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const userInfo = localStorage.getItem('user_info');
+            if (userInfo) {
+                try {
+                    const user = JSON.parse(userInfo);
+                    document.getElementById('user-name').textContent = user.username || '用户';
+                    document.getElementById('user-role').textContent = user.role || '投资者';
+                    document.getElementById('user-avatar').textContent = (user.username || 'U').charAt(0).toUpperCase();
+                } catch (e) {}
+            }
+            
+            loadWatchlist();
+        }
+        
+        function loadWatchlist() {
+            const stored = localStorage.getItem('watchlist');
+            if (stored) {
+                watchlist = JSON.parse(stored);
+            }
+            
+            if (watchlist.length === 0) {
+                watchlist = [
+                    { symbol: '600519', name: '贵州茅台', price: 1856.00, change: 2.35, open: 1810.00, high: 1865.00, low: 1805.00, addedAt: '2024-01-15', note: '白酒龙头' },
+                    { symbol: '000001', name: '平安银行', price: 11.25, change: -1.23, open: 11.40, high: 11.50, low: 11.20, addedAt: '2024-01-14', note: '' },
+                    { symbol: '601318', name: '中国平安', price: 42.80, change: 0.85, open: 42.50, high: 43.10, low: 42.30, addedAt: '2024-01-13', note: '保险龙头' }
+                ];
+                saveWatchlist();
+            }
+            
+            renderWatchlist();
+        }
+        
+        function saveWatchlist() {
+            localStorage.setItem('watchlist', JSON.stringify(watchlist));
+        }
+        
+        function renderWatchlist() {
+            const count = watchlist.length;
+            let upCount = 0;
+            let downCount = 0;
+            let totalChange = 0;
+            
+            watchlist.forEach(stock => {
+                if (stock.change >= 0) upCount++;
+                else downCount++;
+                totalChange += stock.change;
+            });
+            
+            document.getElementById('watchlist-count').textContent = count;
+            document.getElementById('up-count').textContent = upCount;
+            document.getElementById('down-count').textContent = downCount;
+            document.getElementById('avg-change').textContent = count > 0 ? (totalChange / count).toFixed(2) + '%' : '--';
+            
+            if (count === 0) {
+                document.getElementById('watchlist-empty').style.display = 'block';
+                document.getElementById('watchlist-list').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('watchlist-empty').style.display = 'none';
+            document.getElementById('watchlist-list').style.display = 'block';
+            
+            let html = '';
+            watchlist.forEach(stock => {
+                const changeClass = stock.change >= 0 ? 'price-up' : 'price-down';
+                const changeText = (stock.change >= 0 ? '+' : '') + stock.change.toFixed(2) + '%';
+                
+                html += '<tr onclick="goToAnalysis(\'' + stock.symbol + '\')" style="cursor: pointer;">' +
+                    '<td><strong>' + stock.symbol + '</strong></td>' +
+                    '<td>' + stock.name + '</td>' +
+                    '<td>' + stock.price.toFixed(2) + '</td>' +
+                    '<td class="' + changeClass + '">' + changeText + '</td>' +
+                    '<td>' + stock.open.toFixed(2) + '</td>' +
+                    '<td>' + stock.high.toFixed(2) + '</td>' +
+                    '<td>' + stock.low.toFixed(2) + '</td>' +
+                    '<td>' + stock.addedAt + '</td>' +
+                    '<td onclick="event.stopPropagation();">' +
+                        '<button class="btn btn-sm btn-outline" onclick="analyzeStock(\'' + stock.symbol + '\')">分析</button> ' +
+                        '<button class="btn btn-sm btn-danger" onclick="removeStock(\'' + stock.symbol + '\')">删除</button>' +
+                    '</td>' +
+                    '</tr>';
+            });
+            
+            document.getElementById('watchlist-table').innerHTML = html;
+        }
+        
+        function showAddStock() {
+            document.getElementById('add-stock-modal').classList.remove('hidden');
+            document.getElementById('add-stock-modal').style.display = 'flex';
+        }
+        
+        function closeAddStock() {
+            document.getElementById('add-stock-modal').classList.add('hidden');
+            document.getElementById('add-stock-modal').style.display = 'none';
+            document.getElementById('add-symbol').value = '';
+            document.getElementById('add-note').value = '';
+        }
+        
+        function addStock() {
+            const symbol = document.getElementById('add-symbol').value.trim();
+            const note = document.getElementById('add-note').value.trim();
+            
+            if (!symbol) {
+                alert('请输入股票代码');
+                return;
+            }
+            
+            if (watchlist.find(s => s.symbol === symbol)) {
+                alert('该股票已在自选股列表中');
+                return;
+            }
+            
+            const newStock = {
+                symbol: symbol,
+                name: '股票' + symbol,
+                price: Math.random() * 100 + 10,
+                change: (Math.random() - 0.5) * 10,
+                open: Math.random() * 100 + 10,
+                high: Math.random() * 100 + 10,
+                low: Math.random() * 100 + 10,
+                addedAt: new Date().toISOString().split('T')[0],
+                note: note
+            };
+            
+            watchlist.push(newStock);
+            saveWatchlist();
+            renderWatchlist();
+            closeAddStock();
+        }
+        
+        function removeStock(symbol) {
+            if (confirm('确定要从自选股中删除 ' + symbol + ' 吗？')) {
+                watchlist = watchlist.filter(s => s.symbol !== symbol);
+                saveWatchlist();
+                renderWatchlist();
+            }
+        }
+        
+        function analyzeStock(symbol) {
+            window.location.href = 'index.html?symbol=' + symbol;
+        }
+        
+        function goToAnalysis(symbol) {
+            window.location.href = 'index.html?symbol=' + symbol;
+        }
+        
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.user-card') && !e.target.closest('#user-dropdown')) {
+                document.getElementById('user-dropdown').style.display = 'none';
+            }
+        });
+        
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user_info');
+            window.location.href = 'login.html';
+        }
+        
+        function showApiDocs() {
+            window.open('/docs', '_blank');
+        }
+        
+        document.getElementById('search-watchlist').addEventListener('input', function(e) {
+            const keyword = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#watchlist-table tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(keyword) ? '' : 'none';
+            });
+        });
+        
+        document.getElementById('sort-select').addEventListener('change', function(e) {
+            const sortBy = e.target.value;
+            
+            switch(sortBy) {
+                case 'change-desc':
+                    watchlist.sort((a, b) => b.change - a.change);
+                    break;
+                case 'change-asc':
+                    watchlist.sort((a, b) => a.change - b.change);
+                    break;
+                case 'price-desc':
+                    watchlist.sort((a, b) => b.price - a.price);
+                    break;
+                default:
+                    break;
+            }
+            
+            renderWatchlist();
+        });
+        
+        window.addEventListener('load', checkAuth);
+    </script>
+</body>
+</html>

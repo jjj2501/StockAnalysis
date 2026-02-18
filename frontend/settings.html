@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人设置 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="index.html" class="sidebar-logo">
+                    <div class="logo-icon">SA</div>
+                    <span class="logo-text">StockAnalysis</span>
+                </a>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">主菜单</div>
+                    <a href="index.html" class="nav-item">
+                        <i>&#128200;</i>
+                        <span>股票分析</span>
+                    </a>
+                    <a href="backtest.html" class="nav-item">
+                        <i>&#128202;</i>
+                        <span>策略回测</span>
+                    </a>
+                    <a href="watchlist.html" class="nav-item">
+                        <i>&#11088;</i>
+                        <span>自选股</span>
+                    </a>
+                    <a href="portfolio.html" class="nav-item">
+                        <i>&#128179;</i>
+                        <span>投资组合</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">数据</div>
+                    <a href="data.html" class="nav-item">
+                        <i>&#128451;</i>
+                        <span>数据中心</span>
+                    </a>
+                    <a href="factors.html" class="nav-item">
+                        <i>&#128269;</i>
+                        <span>因子分析</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">系统</div>
+                    <a href="settings.html" class="nav-item active">
+                        <i>&#9881;</i>
+                        <span>个人设置</span>
+                    </a>
+                    <a href="#" class="nav-item" onclick="showApiDocs(); return false;">
+                        <i>&#128196;</i>
+                        <span>API文档</span>
+                    </a>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer" id="sidebar-footer">
+                <div class="user-card" onclick="toggleUserMenu()">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-info">
+                        <div class="user-name" id="user-name">未登录</div>
+                        <div class="user-role" id="user-role">请先登录</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-header">
+                <h1 class="page-title">个人设置</h1>
+            </header>
+
+            <div class="content-area">
+                <div class="grid" style="grid-template-columns: 300px 1fr; gap: 2rem;">
+                    <div>
+                        <div class="card mb-3">
+                            <div class="card-body text-center">
+                                <div class="user-avatar" id="profile-avatar" style="width: 80px; height: 80px; font-size: 2rem; margin: 0 auto 1rem;">?</div>
+                                <h3 id="profile-name">用户名</h3>
+                                <p class="text-muted" id="profile-email">email@example.com</p>
+                                <p class="badge badge-primary" id="profile-role">投资者</p>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">快捷操作</h3>
+                            </div>
+                            <div class="card-body p-0">
+                                <a href="#" class="dropdown-item" style="padding: 0.875rem 1rem;">&#128196; 导出我的数据</a>
+                                <a href="#" class="dropdown-item" style="padding: 0.875rem 1rem;">&#128260; 同步设置</a>
+                                <a href="#" class="dropdown-item" style="padding: 0.875rem 1rem; color: var(--danger);" onclick="deleteAccount()">&#128465; 删除账户</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="tabs mb-3">
+                            <button class="tab-item active" onclick="switchTab('profile')">个人资料</button>
+                            <button class="tab-item" onclick="switchTab('security')">安全设置</button>
+                            <button class="tab-item" onclick="switchTab('preferences')">偏好设置</button>
+                        </div>
+                        
+                        <div id="tab-profile" class="tab-content active">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">基本信息</h3>
+                                </div>
+                                <div class="card-body">
+                                    <form id="profile-form">
+                                        <div class="form-group">
+                                            <label class="form-label">用户名</label>
+                                            <input type="text" class="form-input" id="edit-username" disabled>
+                                            <p class="form-hint">用户名创建后不可修改</p>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">显示名称</label>
+                                            <input type="text" class="form-input" id="edit-displayname" placeholder="设置一个显示名称">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">邮箱</label>
+                                            <input type="email" class="form-input" id="edit-email" disabled>
+                                            <p class="form-hint">如需更换邮箱请联系管理员</p>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">个人简介</label>
+                                            <textarea class="form-input" id="edit-bio" rows="3" placeholder="介绍一下自己..." style="resize: vertical;"></textarea>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">保存更改</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="tab-security" class="tab-content">
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h3 class="card-title">修改密码</h3>
+                                </div>
+                                <div class="card-body">
+                                    <form id="password-form">
+                                        <div class="form-group">
+                                            <label class="form-label">当前密码</label>
+                                            <input type="password" class="form-input" id="current-password" placeholder="输入当前密码">
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">新密码</label>
+                                            <input type="password" class="form-input" id="new-password" placeholder="输入新密码">
+                                            <p class="form-hint">至少8位，包含大小写字母和数字</p>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">确认新密码</label>
+                                            <input type="password" class="form-input" id="confirm-new-password" placeholder="再次输入新密码">
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">更新密码</button>
+                                    </form>
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">登录历史</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th>时间</th>
+                                                <th>设备</th>
+                                                <th>IP地址</th>
+                                                <th>状态</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="login-history">
+                                            <tr>
+                                                <td>今天 14:30</td>
+                                                <td>Windows / Chrome</td>
+                                                <td>192.168.1.***</td>
+                                                <td><span class="badge badge-success">当前</span></td>
+                                            </tr>
+                                            <tr>
+                                                <td>昨天 09:15</td>
+                                                <td>Windows / Chrome</td>
+                                                <td>192.168.1.***</td>
+                                                <td><span class="badge badge-primary">成功</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="tab-preferences" class="tab-content">
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h3 class="card-title">界面设置</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-light);">
+                                        <div>
+                                            <div style="font-weight: 500;">深色模式</div>
+                                            <div class="text-muted" style="font-size: 0.8rem;">使用深色界面主题</div>
+                                        </div>
+                                        <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                                            <input type="checkbox" id="dark-mode" style="opacity: 0; width: 0; height: 0;">
+                                            <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-color); border-radius: 24px; transition: 0.3s;"></span>
+                                        </label>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-light);">
+                                        <div>
+                                            <div style="font-weight: 500;">默认股票代码</div>
+                                            <div class="text-muted" style="font-size: 0.8rem;">首页默认显示的股票</div>
+                                        </div>
+                                        <input type="text" class="form-input" style="width: 120px;" id="default-symbol" value="600519">
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0;">
+                                        <div>
+                                            <div style="font-weight: 500;">默认分析周期</div>
+                                            <div class="text-muted" style="font-size: 0.8rem;">股票分析的时间范围</div>
+                                        </div>
+                                        <select class="form-input" style="width: 120px;" id="default-period">
+                                            <option value="30">近30天</option>
+                                            <option value="60">近60天</option>
+                                            <option value="90">近90天</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">通知设置</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-light);">
+                                        <div>
+                                            <div style="font-weight: 500;">价格提醒</div>
+                                            <div class="text-muted" style="font-size: 0.8rem;">自选股价格变动提醒</div>
+                                        </div>
+                                        <input type="checkbox" id="price-alert" checked style="accent-color: var(--primary);">
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border-light);">
+                                        <div>
+                                            <div style="font-weight: 500;">系统通知</div>
+                                            <div class="text-muted" style="font-size: 0.8rem;">系统更新和重要公告</div>
+                                        </div>
+                                        <input type="checkbox" id="system-alert" checked style="accent-color: var(--primary);">
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0;">
+                                        <div>
+                                            <div style="font-weight: 500;">投资建议</div>
+                                            <div class="text-muted" style="font-size: 0.8rem;">每周投资建议推送</div>
+                                        </div>
+                                        <input type="checkbox" id="weekly-tips" style="accent-color: var(--primary);">
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <button class="btn btn-primary" onclick="savePreferences()">保存偏好设置</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="user-dropdown" class="dropdown-menu" style="display: none;">
+        <a href="settings.html" class="dropdown-item">&#9881; 个人设置</a>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item" onclick="logout()" style="color: var(--danger);">&#128682; 退出登录</button>
+    </div>
+
+    <script>
+        function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const userInfo = localStorage.getItem('user_info');
+            if (userInfo) {
+                try {
+                    const user = JSON.parse(userInfo);
+                    document.getElementById('user-name').textContent = user.username || '用户';
+                    document.getElementById('user-role').textContent = user.role || '投资者';
+                    document.getElementById('user-avatar').textContent = (user.username || 'U').charAt(0).toUpperCase();
+                    document.getElementById('profile-name').textContent = user.username || '用户';
+                    document.getElementById('profile-email').textContent = user.email || '';
+                    document.getElementById('profile-role').textContent = user.role || '投资者';
+                    document.getElementById('profile-avatar').textContent = (user.username || 'U').charAt(0).toUpperCase();
+                    document.getElementById('edit-username').value = user.username || '';
+                    document.getElementById('edit-email').value = user.email || '';
+                } catch (e) {}
+            }
+        }
+        
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.user-card') && !e.target.closest('#user-dropdown')) {
+                document.getElementById('user-dropdown').style.display = 'none';
+            }
+        });
+        
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user_info');
+            window.location.href = 'login.html';
+        }
+        
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-item').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+        }
+        
+        function showApiDocs() {
+            window.open('/docs', '_blank');
+        }
+        
+        function savePreferences() {
+            alert('设置已保存');
+        }
+        
+        function deleteAccount() {
+            if (confirm('确定要删除账户吗？此操作不可撤销。')) {
+                alert('请联系管理员删除账户');
+            }
+        }
+        
+        document.getElementById('profile-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const displayname = document.getElementById('edit-displayname').value;
+            const bio = document.getElementById('edit-bio').value;
+            alert('个人资料已更新');
+        });
+        
+        document.getElementById('password-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const currentPwd = document.getElementById('current-password').value;
+            const newPwd = document.getElementById('new-password').value;
+            const confirmPwd = document.getElementById('confirm-new-password').value;
+            
+            if (newPwd !== confirmPwd) {
+                alert('两次输入的新密码不一致');
+                return;
+            }
+            
+            if (newPwd.length < 8) {
+                alert('密码长度至少8位');
+                return;
+            }
+            
+            alert('密码已更新');
+        });
+        
+        window.addEventListener('load', checkAuth);
+    </script>
+</body>
+</html>

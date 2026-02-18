@@ -19,6 +19,18 @@ dependencies = [
     "scikit-learn>=1.4.0",
     "torch>=2.0.0",
     "uvicorn>=0.30.0",
+    # 认证相关依赖
+    "passlib[argon2]>=1.7.4",
+    "python-jose[cryptography]>=3.3.0",
+    "python-multipart>=0.0.6",
+    "email-validator>=2.1.0",
+    "redis>=5.0.1",
+    "aioredis>=2.0.1",
+    "slowapi>=0.1.8",
+    "sqlalchemy>=2.0.25",
+    "alembic>=1.13.1",
+    "psycopg2-binary>=2.9.9",
+    "pydantic-settings>=2.1.0",
 ]
 
 

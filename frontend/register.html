@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">SA</div>
+                <h1 class="auth-title">创建账户</h1>
+                <p class="auth-subtitle">开启您的智能投资之旅</p>
+            </div>
+            
+            <div class="auth-body">
+                <div id="alert-box" class="hidden"></div>
+                
+                <form id="register-form">
+                    <div class="form-group">
+                        <label class="form-label">用户名 <span style="color: var(--danger);">*</span></label>
+                        <input type="text" class="form-input" id="username" name="username" 
+                               placeholder="请输入用户名" required minlength="3" maxlength="50">
+                        <p class="form-hint">3-50个字符，字母、数字或下划线</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">邮箱 <span style="color: var(--danger);">*</span></label>
+                        <input type="email" class="form-input" id="email" name="email" 
+                               placeholder="your@email.com" required>
+                        <p class="form-hint">用于账户恢复和通知</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">密码 <span style="color: var(--danger);">*</span></label>
+                        <div style="position: relative;">
+                            <input type="password" class="form-input" id="password" name="password" 
+                                   placeholder="至少8位，含大小写字母和数字" required minlength="8"
+                                   style="padding-right: 40px;">
+                            <button type="button" onclick="togglePassword('password')" 
+                                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); 
+                                           background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 5px;">
+                                <span id="toggle-icon-password">&#128065;</span>
+                            </button>
+                        </div>
+                        <div id="password-strength" style="margin-top: 0.5rem;">
+                            <div style="display: flex; gap: 4px; margin-bottom: 0.25rem;">
+                                <div id="str-1" style="flex: 1; height: 4px; background: var(--border-color); border-radius: 2px;"></div>
+                                <div id="str-2" style="flex: 1; height: 4px; background: var(--border-color); border-radius: 2px;"></div>
+                                <div id="str-3" style="flex: 1; height: 4px; background: var(--border-color); border-radius: 2px;"></div>
+                                <div id="str-4" style="flex: 1; height: 4px; background: var(--border-color); border-radius: 2px;"></div>
+                            </div>
+                            <p id="strength-text" class="form-hint" style="margin: 0;"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">确认密码 <span style="color: var(--danger);">*</span></label>
+                        <div style="position: relative;">
+                            <input type="password" class="form-input" id="confirm-password" 
+                                   placeholder="再次输入密码" required style="padding-right: 40px;">
+                            <button type="button" onclick="togglePassword('confirm-password')" 
+                                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); 
+                                           background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 5px;">
+                                <span id="toggle-icon-confirm">&#128065;</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; align-items: flex-start; gap: 0.5rem;">
+                        <input type="checkbox" id="terms" required style="width: auto; margin-top: 3px; accent-color: var(--primary);">
+                        <label for="terms" style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; font-weight: 400; line-height: 1.5;">
+                            我已阅读并同意 <a href="#" style="color: var(--primary);">服务条款</a> 和 <a href="#" style="color: var(--primary);">隐私政策</a>
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;" id="register-btn">
+                        创建账户
+                    </button>
+                </form>
+                
+                <div class="auth-divider">或者</div>
+                
+                <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+                    已有账户?
+                    <a href="login.html" style="color: var(--primary); font-weight: 500; text-decoration: none;">立即登录</a>
+                </div>
+            </div>
+            
+            <div class="auth-footer">
+                <p>StockAnalysis AI - 个人智能投资分析工具</p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 1.5rem; color: rgba(255,255,255,0.5); font-size: 0.8rem;">
+            <p>注册后可享受:</p>
+            <div style="display: flex; justify-content: center; gap: 1.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                <span>&#128200; AI股票预测</span>
+                <span>&#128202; 量化分析</span>
+                <span>&#128274; 数据安全</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword(fieldId) {
+            const passwordInput = document.getElementById(fieldId);
+            const toggleIcon = document.getElementById('toggle-icon-' + fieldId);
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.innerHTML = '&#128064;';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.innerHTML = '&#128065;';
+            }
+        }
+        
+        function checkPasswordStrength(password) {
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (/[a-z]/.test(password)) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            return strength;
+        }
+        
+        function updatePasswordStrength() {
+            const password = document.getElementById('password').value;
+            const strength = checkPasswordStrength(password);
+            const colors = ['var(--danger)', 'var(--warning)', 'var(--warning)', 'var(--success)', 'var(--success)'];
+            const texts = ['弱', '较弱', '一般', '强', '很强'];
+            
+            for (let i = 1; i <= 4; i++) {
+                const el = document.getElementById('str-' + i);
+                if (i <= strength) {
+                    el.style.background = colors[strength - 1];
+                } else {
+                    el.style.background = 'var(--border-color)';
+                }
+            }
+            
+            const textEl = document.getElementById('strength-text');
+            if (password.length > 0 && strength > 0) {
+                textEl.textContent = '密码强度: ' + texts[strength - 1];
+            } else {
+                textEl.textContent = '';
+            }
+        }
+        
+        document.getElementById('password').addEventListener('input', updatePasswordStrength);
+        
+        document.getElementById('register-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('register-btn');
+            const alertBox = document.getElementById('alert-box');
+            
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const terms = document.getElementById('terms').checked;
+            
+            if (!username || !email || !password) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.innerHTML = '<span>&#10007;</span> 请填写所有必填字段';
+                alertBox.classList.remove('hidden');
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.innerHTML = '<span>&#10007;</span> 两次输入的密码不一致';
+                alertBox.classList.remove('hidden');
+                return;
+            }
+            
+            if (!terms) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.innerHTML = '<span>&#10007;</span> 请同意服务条款和隐私政策';
+                alertBox.classList.remove('hidden');
+                return;
+            }
+            
+            const strength = checkPasswordStrength(password);
+            if (strength < 3) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.innerHTML = '<span>&#10007;</span> 密码强度不足，请使用至少8个字符，包含大小写字母和数字';
+                alertBox.classList.remove('hidden');
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = '注册中...';
+            
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        username: username,
+                        password: password,
+                        full_name: username
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || '注册失败');
+                }
+                
+                alertBox.className = 'alert alert-success';
+                alertBox.innerHTML = '<span>&#10003;</span> 注册成功！正在自动登录...';
+                alertBox.classList.remove('hidden');
+                
+                setTimeout(async () => {
+                    try {
+                        const loginResponse = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                username: email,
+                                password: password
+                            })
+                        });
+                        
+                        const loginData = await loginResponse.json();
+                        
+                        if (loginResponse.ok && loginData.token) {
+                            localStorage.setItem('access_token', loginData.token);
+                            localStorage.setItem('user_info', JSON.stringify(loginData.user || data.user || data));
+                            window.location.href = 'index.html';
+                        } else {
+                            window.location.href = 'login.html';
+                        }
+                    } catch (loginError) {
+                        window.location.href = 'login.html';
+                    }
+                }, 1500);
+                
+            } catch (error) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.innerHTML = '<span>&#10007;</span> ' + error.message;
+                alertBox.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = '创建账户';
+            }
+        });
+        
+        window.addEventListener('load', function() {
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                window.location.href = 'index.html';
+            }
+        });
+    </script>
+</body>
+</html>

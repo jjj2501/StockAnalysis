@@ -1,12 +1,23 @@
+#!/usr/bin/env python3
+"""
+简化服务器启动脚本
+仅启动认证系统，避免加载所有依赖
+"""
+
+import sys
+import os
+import uvicorn
+
+# 添加项目根目录到Python路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 创建简化的FastAPI应用
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-import os
 import logging
 
-from backend.api.enhanced_router import router as main_router
-from backend.api.data_router import router as data_router
-from backend.api.gpu_router import router as gpu_router
+# 只导入认证相关模块
 from backend.auth.routers.auth import router as auth_router
 from backend.auth.routers.users import router as users_router
 from backend.auth.middleware import (
@@ -15,7 +26,6 @@ from backend.auth.middleware import (
     SecurityHeadersMiddleware,
     AuditMiddleware
 )
-from backend.auth.database import init_db
 from backend.config import settings
 
 # 配置日志
@@ -25,11 +35,11 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="StockAnalysis AI",
-    description="基于 Transformers + LSTM 与 LLM 的智能投资分析工具",
+    title="StockAnalysis AI - 认证系统",
+    description="用户认证和管理API",
     version="1.0.0",
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # CORS 配置
@@ -47,12 +57,9 @@ app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.RATE_LIMIT_
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuditMiddleware)
 
-# API 路由
+# 只包含认证路由
 app.include_router(auth_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
-app.include_router(main_router, prefix="/api")
-app.include_router(data_router, prefix="/api")
-app.include_router(gpu_router, prefix="/api")
 
 # 前端托管
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -63,5 +70,7 @@ if os.path.exists(static_dir):
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("[INFO] 启动StockAnalysis AI认证服务器...")
+    print(f"[INFO] 文档地址: http://localhost:8000/docs")
+    print(f"[INFO] 前端地址: http://localhost:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
