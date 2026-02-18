@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">SA</div>
+                <h1 class="auth-title">StockAnalysis AI</h1>
+                <p class="auth-subtitle">智能投资分析平台</p>
+            </div>
+            
+            <div class="auth-body">
+                <div id="alert-box" class="hidden"></div>
+                
+                <form id="login-form">
+                    <div class="form-group">
+                        <label class="form-label">用户名或邮箱</label>
+                        <input type="text" class="form-input" id="username" name="username" 
+                               placeholder="请输入用户名或邮箱" required autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>密码</span>
+                            <a href="#" style="color: var(--primary); font-weight: 400; font-size: 0.8rem;"
+                               onclick="showForgotPassword(); return false;">忘记密码?</a>
+                        </label>
+                        <div style="position: relative;">
+                            <input type="password" class="form-input" id="password" name="password" 
+                                   placeholder="请输入密码" required autocomplete="current-password"
+                                   style="padding-right: 40px;">
+                            <button type="button" onclick="togglePassword()" 
+                                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); 
+                                           background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 5px;">
+                                <span id="toggle-icon">&#128065;</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="remember" style="width: auto; accent-color: var(--primary);">
+                        <label for="remember" style="font-size: 0.85rem; color: var(--text-secondary); margin: 0; font-weight: 400;">
+                            记住我
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;" id="login-btn">
+                        登录
+                    </button>
+                </form>
+                
+                <div class="auth-divider">或者</div>
+                
+                <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+                    新用户?
+                    <a href="register.html" style="color: var(--primary); font-weight: 500; text-decoration: none;">创建账户</a>
+                </div>
+            </div>
+            
+            <div class="auth-footer">
+                <p>StockAnalysis AI - 个人智能投资分析工具</p>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 1.5rem; color: rgba(255,255,255,0.5); font-size: 0.8rem;">
+            <p>基于 Transformers + LSTM 与 LLM 的智能选股助手</p>
+            <p style="margin-top: 0.5rem;">支持多用户 · 数据隔离 · 本地部署</p>
+        </div>
+    </div>
+
+    <div id="forgot-modal" class="hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+         background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div class="card" style="width: 400px; max-width: 90%;">
+            <div class="card-header">
+                <h3 class="card-title">重置密码</h3>
+                <button onclick="closeForgotPassword()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">注册邮箱</label>
+                    <input type="email" class="form-input" id="reset-email" placeholder="请输入注册时的邮箱">
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">
+                    我们将向您的邮箱发送密码重置链接。
+                </p>
+            </div>
+            <div class="card-footer" style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeForgotPassword()">取消</button>
+                <button class="btn btn-primary" onclick="sendResetEmail()">发送重置链接</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.getElementById('toggle-icon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.innerHTML = '&#128064;';
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.innerHTML = '&#128065;';
+            }
+        }
+        
+        function showForgotPassword() {
+            document.getElementById('forgot-modal').classList.remove('hidden');
+            document.getElementById('forgot-modal').style.display = 'flex';
+        }
+        
+        function closeForgotPassword() {
+            document.getElementById('forgot-modal').classList.add('hidden');
+            document.getElementById('forgot-modal').style.display = 'none';
+        }
+        
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('login-btn');
+            const alertBox = document.getElementById('alert-box');
+            
+            btn.disabled = true;
+            btn.innerHTML = '登录中...';
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const remember = document.getElementById('remember').checked;
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || '登录失败');
+                }
+                
+                if (data.token) {
+                    localStorage.setItem('access_token', data.token);
+                    localStorage.setItem('user_info', JSON.stringify(data.user || {}));
+                    
+                    if (remember) {
+                        localStorage.setItem('remember_me', 'true');
+                    }
+                    
+                    alertBox.className = 'alert alert-success';
+                    alertBox.innerHTML = '<span>&#10003;</span> 登录成功，正在跳转...';
+                    alertBox.classList.remove('hidden');
+                    
+                    try {
+                        const userResponse = await fetch('/api/users/me', {
+                            headers: {
+                                'Authorization': `Bearer ${data.access_token}`
+                            }
+                        });
+                        if (userResponse.ok) {
+                            const userData = await userResponse.json();
+                            localStorage.setItem('user_info', JSON.stringify(userData));
+                        }
+                    } catch (e) {}
+                    
+                    setTimeout(() => {
+                        const redirect = localStorage.getItem('redirect_path') || 'index.html';
+                        localStorage.removeItem('redirect_path');
+                        window.location.href = redirect;
+                    }, 1000);
+                }
+                
+            } catch (error) {
+                alertBox.className = 'alert alert-danger';
+                alertBox.innerHTML = '<span>&#10007;</span> ' + error.message;
+                alertBox.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = '登录';
+            }
+        });
+        
+        async function sendResetEmail() {
+            const email = document.getElementById('reset-email').value;
+            if (!email) {
+                alert('请输入邮箱地址');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/auth/password-reset/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                
+                if (response.ok) {
+                    alert('重置链接已发送到您的邮箱');
+                    closeForgotPassword();
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.detail || '发送失败');
+                }
+            } catch (error) {
+                alert('发送失败: ' + error.message);
+            }
+        }
+        
+        window.addEventListener('load', function() {
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                window.location.href = 'index.html';
+            }
+        });
+    </script>
+</body>
+</html>

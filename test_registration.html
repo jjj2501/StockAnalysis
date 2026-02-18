@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册功能测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <h1>注册功能测试</h1>
+    
+    <div class="form-group">
+        <label for="username">用户名:</label>
+        <input type="text" id="username" placeholder="输入用户名">
+    </div>
+    
+    <div class="form-group">
+        <label for="email">邮箱:</label>
+        <input type="email" id="email" placeholder="输入邮箱">
+    </div>
+    
+    <div class="form-group">
+        <label for="password">密码:</label>
+        <input type="password" id="password" placeholder="输入密码（至少6位）">
+    </div>
+    
+    <div class="form-group">
+        <label for="full_name">姓名:</label>
+        <input type="text" id="full_name" placeholder="输入姓名">
+    </div>
+    
+    <button onclick="testRegistration()">测试注册</button>
+    
+    <div id="result" class="result"></div>
+    
+    <script>
+        async function testRegistration() {
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const full_name = document.getElementById('full_name').value;
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none';
+            
+            if (!username || !email || !password || !full_name) {
+                showResult('请填写所有字段', 'error');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showResult('密码至少需要6位', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        email: email,
+                        password: password,
+                        full_name: full_name
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`注册成功！用户ID: ${data.user.id}, 令牌: ${data.token.substring(0, 20)}...`, 'success');
+                } else {
+                    showResult(`注册失败: ${data.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showResult(`请求错误: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+        }
+        
+        // 填充测试数据
+        document.getElementById('username').value = 'test_' + Date.now();
+        document.getElementById('email').value = 'test_' + Date.now() + '@example.com';
+        document.getElementById('password').value = 'password123';
+        document.getElementById('full_name').value = '测试用户';
+    </script>
+</body>
+</html>

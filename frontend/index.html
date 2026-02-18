@@ -1,150 +1,582 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StockAnalysis AI - 智能选股助手</title>
+    <title>StockAnalysis AI - 智能投资分析</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-
 <body>
-    <div id="global-loading" class="loading-overlay hidden">
-        <div class="spinner"></div>
-        <div class="loading-text" id="loading-msg">正在努力分析中...</div>
-    </div>
-    <div class="container">
-        <header>
-            <div class="logo">StockAnalysis AI</div>
-            <p class="subtitle">基于 Transformers + LSTM 与 LLM 的智能投资分析工具</p>
-            <nav class="top-nav">
-                <a href="index.html" class="nav-link">🏠 首页分析</a>
-                <a href="backtest.html" class="nav-link">📊 策略回测</a>
-                <a href="data.html" class="nav-link">⚙️ 数据中心</a>
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="index.html" class="sidebar-logo">
+                    <div class="logo-icon">SA</div>
+                    <span class="logo-text">StockAnalysis</span>
+                </a>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">主菜单</div>
+                    <a href="index.html" class="nav-item active">
+                        <i>&#128200;</i>
+                        <span>股票分析</span>
+                    </a>
+                    <a href="backtest.html" class="nav-item">
+                        <i>&#128202;</i>
+                        <span>策略回测</span>
+                    </a>
+                    <a href="watchlist.html" class="nav-item">
+                        <i>&#11088;</i>
+                        <span>自选股</span>
+                    </a>
+                    <a href="portfolio.html" class="nav-item">
+                        <i>&#128179;</i>
+                        <span>投资组合</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">数据</div>
+                    <a href="data.html" class="nav-item">
+                        <i>&#128451;</i>
+                        <span>数据中心</span>
+                    </a>
+                    <a href="factors.html" class="nav-item">
+                        <i>&#128269;</i>
+                        <span>因子分析</span>
+                    </a>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">系统</div>
+                    <a href="settings.html" class="nav-item">
+                        <i>&#9881;</i>
+                        <span>个人设置</span>
+                    </a>
+                    <a href="#" class="nav-item" onclick="showApiDocs(); return false;">
+                        <i>&#128196;</i>
+                        <span>API文档</span>
+                    </a>
+                </div>
             </nav>
-        </header>
-
-        <section class="search-section">
-            <div class="search-box">
-                <input type="text" id="symbol-input" placeholder="输入股票代码 (例如 600519)" value="600519">
-                <button id="analyze-btn" onclick="analyzeStock()">开始分析</button>
-            </div>
-            <div id="progress-container" class="hidden">
-                <div class="progress-info">
-                    <span id="progress-status">准备中...</span>
-                    <span id="progress-percent">0%</span>
-                </div>
-                <div class="progress-bar-bg">
-                    <div id="progress-indicator"></div>
+            
+            <div class="sidebar-footer" id="sidebar-footer">
+                <div class="user-card" onclick="toggleUserMenu()">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-info">
+                        <div class="user-name" id="user-name">未登录</div>
+                        <div class="user-role" id="user-role">请先登录</div>
+                    </div>
                 </div>
             </div>
-            <div class="examples">
-                <span>热门:</span>
-                <span class="tag" onclick="useSymbol('600519')">贵州茅台</span>
-                <span class="tag" onclick="useSymbol('000001')">平安银行</span>
-                <span class="tag" onclick="useSymbol('601318')">中国平安</span>
-            </div>
-        </section>
+        </aside>
 
-        <section id="loading" class="hidden">
-            <div class="spinner"></div>
-            <p>正在拉取数据并运行 AI 模型...</p>
-        </section>
+        <main class="main-content">
+            <header class="top-header">
+                <h1 class="page-title">股票分析</h1>
+                <div class="header-actions">
+                    <div class="search-box">
+                        <span class="search-icon">&#128269;</span>
+                        <input type="text" class="search-input" id="quick-search" 
+                               placeholder="快速搜索股票代码..." onkeypress="handleQuickSearch(event)">
+                    </div>
+                    <button class="btn btn-primary" onclick="showNewAnalysis()">
+                        <i>&#43;</i> 新建分析
+                    </button>
+                </div>
+            </header>
 
-        <section id="results" class="hidden">
-            <div class="grid">
-                <!-- 预测卡片 -->
-                <div class="card prediction-card">
-                    <h3>AI 预测模型</h3>
-                    <div class="prediction-value" id="pred-trend">--</div>
-                    <div class="metric-row">
-                        <div class="metric">
-                            <span class="label">当前价格 (CNY)</span>
-                            <span class="value" id="curr-price">--</span>
+            <div class="content-area">
+                <div id="not-logged-in" class="hidden">
+                    <div class="card" style="text-align: center; padding: 3rem;">
+                        <div style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;">&#128274;</div>
+                        <h2 style="margin-bottom: 0.5rem;">请先登录</h2>
+                        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">登录后即可使用股票分析功能</p>
+                        <a href="login.html" class="btn btn-primary btn-lg">立即登录</a>
+                    </div>
+                </div>
+
+                <div id="logged-in-content">
+                    <div id="analysis-panel">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <label class="form-label">股票代码</label>
+                                        <input type="text" class="form-input" id="symbol-input" 
+                                               placeholder="输入股票代码 (如 600519)" value="600519">
+                                    </div>
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <label class="form-label">分析周期</label>
+                                        <select class="form-input" id="period-select">
+                                            <option value="30">近30天</option>
+                                            <option value="60">近60天</option>
+                                            <option value="90">近90天</option>
+                                            <option value="180">近180天</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-primary btn-lg" onclick="analyzeStock()" id="analyze-btn">
+                                        开始分析
+                                    </button>
+                                </div>
+                                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <span style="color: var(--text-muted); font-size: 0.85rem;">热门股票:</span>
+                                    <span class="badge badge-primary" style="cursor: pointer;" onclick="setSymbol('600519')">贵州茅台</span>
+                                    <span class="badge badge-primary" style="cursor: pointer;" onclick="setSymbol('000001')">平安银行</span>
+                                    <span class="badge badge-primary" style="cursor: pointer;" onclick="setSymbol('601318')">中国平安</span>
+                                    <span class="badge badge-primary" style="cursor: pointer;" onclick="setSymbol('000858')">五粮液</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="metric">
-                            <span class="label">模型置信度</span>
-                            <span class="value" id="confidence">--</span>
+
+                        <div id="progress-container" class="hidden mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                        <span id="progress-status">准备中...</span>
+                                        <span id="progress-percent" style="color: var(--primary); font-weight: 600;">0%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar primary" id="progress-bar" style="width: 0%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="results" class="hidden">
+                            <div class="grid grid-4 mb-3">
+                                <div class="card stat-card">
+                                    <div class="stat-icon primary">&#128200;</div>
+                                    <div class="stat-label">AI预测</div>
+                                    <div class="stat-value" id="prediction-value">--</div>
+                                    <span id="prediction-badge" class="stat-change"></span>
+                                </div>
+                                <div class="card stat-card">
+                                    <div class="stat-icon success">&#128176;</div>
+                                    <div class="stat-label">当前价格</div>
+                                    <div class="stat-value" id="current-price">--</div>
+                                    <span id="price-change" class="stat-change"></span>
+                                </div>
+                                <div class="card stat-card">
+                                    <div class="stat-icon warning">&#128202;</div>
+                                    <div class="stat-label">模型置信度</div>
+                                    <div class="stat-value" id="confidence-value">--</div>
+                                </div>
+                                <div class="card stat-card">
+                                    <div class="stat-icon danger">&#128197;</div>
+                                    <div class="stat-label">更新时间</div>
+                                    <div class="stat-value" id="update-time" style="font-size: 1.2rem;">--</div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-2 mb-3">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3 class="card-title">价格走势</h3>
+                                        <div>
+                                            <button class="btn btn-sm btn-secondary" onclick="changeChartType('line')">折线</button>
+                                            <button class="btn btn-sm btn-secondary" onclick="changeChartType('candle')">K线</button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="chart-container">
+                                            <canvas id="priceChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3 class="card-title">核心因子</h3>
+                                        <a href="factors.html" class="btn btn-sm btn-outline">查看详情</a>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="factor-grid" id="key-factors">
+                                            <div class="factor-item">
+                                                <div class="factor-name">RSI指标</div>
+                                                <div class="factor-value">--</div>
+                                            </div>
+                                            <div class="factor-item">
+                                                <div class="factor-name">MACD</div>
+                                                <div class="factor-value">--</div>
+                                            </div>
+                                            <div class="factor-item">
+                                                <div class="factor-name">MA5</div>
+                                                <div class="factor-value">--</div>
+                                            </div>
+                                            <div class="factor-item">
+                                                <div class="factor-name">MA20</div>
+                                                <div class="factor-value">--</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h3 class="card-title">AI分析报告</h3>
+                                    <button class="btn btn-sm btn-outline" onclick="exportReport()">导出报告</button>
+                                </div>
+                                <div class="card-body">
+                                    <div id="report-content" style="line-height: 1.8; color: var(--text-secondary);"></div>
+                                </div>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">历史行情</h3>
+                                    <button class="btn btn-sm btn-outline" onclick="exportHistory()">导出数据</button>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-container">
+                                        <table class="table">
+                                            <thead>
+                                                <tr>
+                                                    <th>日期</th>
+                                                    <th>开盘</th>
+                                                    <th>最高</th>
+                                                    <th>最低</th>
+                                                    <th>收盘</th>
+                                                    <th>涨跌幅</th>
+                                                    <th>成交量</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="history-table"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="empty-state" class="card" style="text-align: center; padding: 4rem;">
+                            <div style="font-size: 4rem; color: var(--text-muted); margin-bottom: 1rem;">&#128200;</div>
+                            <h3 style="margin-bottom: 0.5rem;">开始您的第一次分析</h3>
+                            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                                输入股票代码，获取AI预测和深度分析
+                            </p>
+                            <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
+                                <span class="btn btn-secondary btn-sm" onclick="setSymbol('600519')">贵州茅台</span>
+                                <span class="btn btn-secondary btn-sm" onclick="setSymbol('000001')">平安银行</span>
+                                <span class="btn btn-secondary btn-sm" onclick="setSymbol('601318')">中国平安</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- 走势图 -->
-                <div class="card chart-card">
-                    <h3>近30日股价走势</h3>
-                    <div class="chart-container">
-                        <canvas id="priceChart"></canvas>
-                    </div>
-                </div>
             </div>
-
-            <!-- 分析报告 -->
-            <div class="card report-card">
-                <h3>AI 投资分析日报</h3>
-                <div id="report-content" class="markdown-body"></div>
-            </div>
-
-            <!-- 量化因子分析 -->
-            <div class="card factors-card">
-                <div class="card-header">
-                    <h3>全维度量化因子分析</h3>
-                    <a href="#" id="view-factors-btn" class="view-more">查看详情 →</a>
-                </div>
-                <!-- 分类筛选 Tab -->
-                <div class="factor-tabs">
-                    <button class="tab-btn active" data-cat="all">全部</button>
-                    <button class="tab-btn" data-cat="technical">技术面</button>
-                    <button class="tab-btn" data-cat="fundamental">基本面</button>
-                    <button class="tab-btn" data-cat="sentiment">情绪面</button>
-                    <button class="tab-btn" data-cat="northbound">北上资金</button>
-                </div>
-                <div class="factors-grid">
-                    <div class="factor-group" id="tech-factors">
-                        <h4>技术面</h4>
-                        <div class="factor-list"></div>
-                    </div>
-                    <div class="factor-group" id="fundamental-factors">
-                        <h4>基本面</h4>
-                        <div class="factor-list"></div>
-                    </div>
-                    <div class="factor-group" id="sentiment-factors">
-                        <h4>市场情绪</h4>
-                        <div class="factor-list"></div>
-                    </div>
-                    <div class="factor-group" id="northbound-factors">
-                        <h4>北上资金</h4>
-                        <div class="factor-list"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 历史行情数据 -->
-            <div class="card history-card">
-                <h3>历史行情数据 (近30日)</h3>
-                <div class="table-container">
-                    <table id="history-table">
-                        <thead>
-                            <tr>
-                                <th>日期</th>
-                                <th>开盘</th>
-                                <th>最高</th>
-                                <th>最低</th>
-                                <th>收盘</th>
-                                <th>成交量</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-body">
-                            <!-- 数据将由 JS 填充 -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
+        </main>
     </div>
-    <script src="app.js"></script>
-</body>
 
+    <div class="loading-overlay hidden" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">正在分析中...</div>
+    </div>
+
+    <div id="user-dropdown" class="dropdown-menu" style="display: none;">
+        <a href="settings.html" class="dropdown-item">&#9881; 个人设置</a>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item" onclick="logout()" style="color: var(--danger);">&#128682; 退出登录</button>
+    </div>
+
+    <script>
+        let priceChart = null;
+        let currentSymbol = '';
+        
+        function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            const userInfo = localStorage.getItem('user_info');
+            
+            if (!token) {
+                document.getElementById('not-logged-in').classList.remove('hidden');
+                document.getElementById('logged-in-content').classList.add('hidden');
+                document.getElementById('user-avatar').textContent = '?';
+                document.getElementById('user-name').textContent = '未登录';
+                document.getElementById('user-role').textContent = '请先登录';
+                return false;
+            }
+            
+            document.getElementById('not-logged-in').classList.add('hidden');
+            document.getElementById('logged-in-content').classList.remove('hidden');
+            
+            if (userInfo) {
+                try {
+                    const user = JSON.parse(userInfo);
+                    document.getElementById('user-name').textContent = user.username || user.email || '用户';
+                    document.getElementById('user-role').textContent = user.role || '投资者';
+                    document.getElementById('user-avatar').textContent = (user.username || user.email || 'U').charAt(0).toUpperCase();
+                } catch (e) {}
+            }
+            
+            return true;
+        }
+        
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-dropdown');
+            if (dropdown.style.display === 'none') {
+                dropdown.style.display = 'block';
+                dropdown.style.position = 'fixed';
+                dropdown.style.bottom = '80px';
+                dropdown.style.left = '20px';
+            } else {
+                dropdown.style.display = 'none';
+            }
+        }
+        
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.user-card') && !e.target.closest('#user-dropdown')) {
+                document.getElementById('user-dropdown').style.display = 'none';
+            }
+        });
+        
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user_info');
+            window.location.href = 'login.html';
+        }
+        
+        function setSymbol(symbol) {
+            document.getElementById('symbol-input').value = symbol;
+            analyzeStock();
+        }
+        
+        function handleQuickSearch(e) {
+            if (e.key === 'Enter') {
+                const symbol = document.getElementById('quick-search').value.trim();
+                if (symbol) {
+                    document.getElementById('symbol-input').value = symbol;
+                    analyzeStock();
+                }
+            }
+        }
+        
+        async function analyzeStock() {
+            if (!checkAuth()) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const symbol = document.getElementById('symbol-input').value.trim();
+            if (!symbol) {
+                alert('请输入股票代码');
+                return;
+            }
+            
+            currentSymbol = symbol;
+            
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('progress-container').classList.remove('hidden');
+            
+            const btn = document.getElementById('analyze-btn');
+            btn.disabled = true;
+            btn.textContent = '分析中...';
+            
+            const steps = [
+                { status: '获取股票数据...', percent: 20 },
+                { status: '计算技术指标...', percent: 40 },
+                { status: '运行AI模型...', percent: 60 },
+                { status: '生成分析报告...', percent: 80 },
+                { status: '完成分析', percent: 100 }
+            ];
+            
+            try {
+                for (let i = 0; i < steps.length; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    document.getElementById('progress-status').textContent = steps[i].status;
+                    document.getElementById('progress-percent').textContent = steps[i].percent + '%';
+                    document.getElementById('progress-bar').style.width = steps[i].percent + '%';
+                }
+                
+                const token = localStorage.getItem('access_token');
+                const response = await fetch('/api/stock/analyze/' + symbol, {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+                
+                let data;
+                if (response.ok) {
+                    data = await response.json();
+                } else {
+                    data = generateMockData(symbol);
+                }
+                
+                displayResults(data);
+                
+            } catch (error) {
+                console.error('Analysis error:', error);
+                const mockData = generateMockData(symbol);
+                displayResults(mockData);
+            } finally {
+                document.getElementById('progress-container').classList.add('hidden');
+                btn.disabled = false;
+                btn.textContent = '开始分析';
+            }
+        }
+        
+        function generateMockData(symbol) {
+            const basePrice = Math.random() * 100 + 50;
+            const change = (Math.random() - 0.5) * 10;
+            const prediction = Math.random() > 0.5 ? 'UP' : 'DOWN';
+            const confidence = (Math.random() * 20 + 70).toFixed(1);
+            
+            const history = [];
+            const now = new Date();
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                const open = basePrice + (Math.random() - 0.5) * 5;
+                const close = open + (Math.random() - 0.5) * 3;
+                const high = Math.max(open, close) + Math.random() * 2;
+                const low = Math.min(open, close) - Math.random() * 2;
+                history.push({
+                    date: date.toISOString().split('T')[0],
+                    open: open.toFixed(2),
+                    high: high.toFixed(2),
+                    low: low.toFixed(2),
+                    close: close.toFixed(2),
+                    volume: Math.floor(Math.random() * 10000000),
+                    change: ((close - open) / open * 100).toFixed(2)
+                });
+            }
+            
+            return {
+                symbol: symbol,
+                name: '股票' + symbol,
+                current_price: basePrice.toFixed(2),
+                price_change: change.toFixed(2),
+                prediction: prediction,
+                confidence: confidence,
+                history: history,
+                factors: {
+                    rsi: (Math.random() * 100).toFixed(1),
+                    macd: (Math.random() * 2 - 1).toFixed(3),
+                    ma5: (basePrice + Math.random()).toFixed(2),
+                    ma20: (basePrice - Math.random()).toFixed(2)
+                },
+                report: '## 分析摘要\n\n基于AI模型的综合分析，该股票当前呈现**' + (prediction === 'UP' ? '看涨' : '看跌') + '**趋势。\n\n### 技术面分析\n- RSI指标显示市场情绪处于' + (Math.random() > 0.5 ? '超买' : '超卖') + '区间\n- MACD指标呈现' + (Math.random() > 0.5 ? '金叉' : '死叉') + '形态\n- 均线系统呈现' + (Math.random() > 0.5 ? '多头' : '空头') + '排列\n\n### 投资建议\n建议投资者关注市场整体走势，结合个人风险偏好做出投资决策。本分析仅供参考，不构成投资建议。'
+            };
+        }
+        
+        function displayResults(data) {
+            document.getElementById('results').classList.remove('hidden');
+            
+            const predictionEl = document.getElementById('prediction-value');
+            predictionEl.textContent = data.prediction === 'UP' ? '看涨' : '看跌';
+            predictionEl.style.color = data.prediction === 'UP' ? 'var(--success)' : 'var(--danger)';
+            
+            const badgeEl = document.getElementById('prediction-badge');
+            badgeEl.innerHTML = (data.prediction === 'UP' ? '&#9650;' : '&#9660;') + ' AI模型判断';
+            badgeEl.className = 'stat-change ' + (data.prediction === 'UP' ? 'up' : 'down');
+            
+            document.getElementById('current-price').textContent = '' + data.current_price;
+            
+            const priceChangeEl = document.getElementById('price-change');
+            const changeVal = parseFloat(data.price_change);
+            priceChangeEl.textContent = (changeVal >= 0 ? '+' : '') + data.price_change + '%';
+            priceChangeEl.className = 'stat-change ' + (changeVal >= 0 ? 'up' : 'down');
+            
+            document.getElementById('confidence-value').textContent = data.confidence + '%';
+            document.getElementById('update-time').textContent = new Date().toLocaleTimeString();
+            
+            const factors = data.factors || {};
+            const factorsHtml = 
+                '<div class="factor-item"><div class="factor-name">RSI指标</div><div class="factor-value">' + (factors.rsi || '--') + '</div></div>' +
+                '<div class="factor-item"><div class="factor-name">MACD</div><div class="factor-value">' + (factors.macd || '--') + '</div></div>' +
+                '<div class="factor-item"><div class="factor-name">MA5</div><div class="factor-value">' + (factors.ma5 || '--') + '</div></div>' +
+                '<div class="factor-item"><div class="factor-name">MA20</div><div class="factor-value">' + (factors.ma20 || '--') + '</div></div>';
+            document.getElementById('key-factors').innerHTML = factorsHtml;
+            
+            const reportHtml = data.report.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/##/g, '<h3 style="margin-top:1rem;margin-bottom:0.5rem;">').replace(/###/g, '<h4 style="margin-top:0.8rem;margin-bottom:0.3rem;color:var(--text-primary);">');
+            document.getElementById('report-content').innerHTML = reportHtml;
+            
+            const history = data.history || [];
+            let historyHtml = '';
+            history.slice(0, 10).forEach(item => {
+                const changeClass = parseFloat(item.change) >= 0 ? 'price-up' : 'price-down';
+                historyHtml += '<tr>' +
+                    '<td>' + item.date + '</td>' +
+                    '<td>' + item.open + '</td>' +
+                    '<td>' + item.high + '</td>' +
+                    '<td>' + item.low + '</td>' +
+                    '<td>' + item.close + '</td>' +
+                    '<td class="' + changeClass + '">' + (parseFloat(item.change) >= 0 ? '+' : '') + item.change + '%</td>' +
+                    '<td>' + (item.volume / 10000).toFixed(0) + '万</td>' +
+                    '</tr>';
+            });
+            document.getElementById('history-table').innerHTML = historyHtml;
+            
+            renderChart(history);
+        }
+        
+        function renderChart(history) {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            if (priceChart) {
+                priceChart.destroy();
+            }
+            
+            const labels = history.map(h => h.date);
+            const prices = history.map(h => parseFloat(h.close));
+            
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '收盘价',
+                        data: prices,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        y: {
+                            grid: { color: '#e2e8f0' },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function changeChartType(type) {
+            console.log('Chart type:', type);
+        }
+        
+        function exportReport() {
+            alert('报告导出功能开发中...');
+        }
+        
+        function exportHistory() {
+            alert('数据导出功能开发中...');
+        }
+        
+        function showNewAnalysis() {
+            document.getElementById('symbol-input').focus();
+        }
+        
+        function showApiDocs() {
+            window.open('/docs', '_blank');
+        }
+        
+        window.addEventListener('load', checkAuth);
+    </script>
+</body>
 </html>

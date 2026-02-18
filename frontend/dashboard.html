@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仪表盘 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">StockAnalysis AI</div>
+                <p class="subtitle">智能投资分析平台</p>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="nav-item active">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">仪表盘</span>
+                </a>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">股票分析</span>
+                </a>
+                <a href="backtest.html" class="nav-item">
+                    <span class="nav-icon">🔧</span>
+                    <span class="nav-text">策略回测</span>
+                </a>
+                <a href="data.html" class="nav-item">
+                    <span class="nav-icon">📁</span>
+                    <span class="nav-text">数据中心</span>
+                </a>
+                <a href="portfolio.html" class="nav-item">
+                    <span class="nav-icon">💼</span>
+                    <span class="nav-text">我的组合</span>
+                </a>
+                <a href="strategies.html" class="nav-item">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">我的策略</span>
+                </a>
+                <a href="history.html" class="nav-item">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-text">分析历史</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">账户设置</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar" id="user-avatar">👤</div>
+                    <div class="user-details">
+                        <div class="user-name" id="user-name">加载中...</div>
+                        <div class="user-email" id="user-email">加载中...</div>
+                        <div class="user-role" id="user-role">
+                            <span class="role-badge free">免费用户</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-logout" onclick="logout()">
+                    <span class="logout-icon">🚪</span>
+                    <span class="logout-text">退出登录</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <header class="main-header">
+                <h1>欢迎回来，<span id="greeting-name">用户</span>！</h1>
+                <div class="header-actions">
+                    <div class="quick-search">
+                        <input type="text" placeholder="搜索股票代码或名称..." id="stock-search">
+                        <button class="search-btn">🔍</button>
+                    </div>
+                    <button class="btn-primary" onclick="window.location.href='index.html'">
+                        <span>📈 开始分析</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- 统计卡片 -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <h3>今日分析次数</h3>
+                        <div class="stat-value" id="today-analysis">0</div>
+                        <div class="stat-change">较昨日 <span id="analysis-change">+0%</span></div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">💼</div>
+                    <div class="stat-content">
+                        <h3>投资组合</h3>
+                        <div class="stat-value" id="portfolio-count">0</div>
+                        <div class="stat-desc">个活跃组合</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-content">
+                        <h3>策略回测</h3>
+                        <div class="stat-value" id="backtest-count">0</div>
+                        <div class="stat-desc">次回测运行</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <h3>预测准确率</h3>
+                        <div class="stat-value" id="accuracy-rate">0%</div>
+                        <div class="stat-desc">基于历史数据</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 图表区域 -->
+            <section class="charts-section">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>近期活动趋势</h3>
+                        <select id="activity-period">
+                            <option value="7">最近7天</option>
+                            <option value="30" selected>最近30天</option>
+                            <option value="90">最近90天</option>
+                        </select>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="activity-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>股票关注热度</h3>
+                        <button class="btn-refresh" onclick="refreshHeatmap()">🔄 刷新</button>
+                    </div>
+                    <div class="heatmap-container">
+                        <div id="stock-heatmap">
+                            <!-- 热度图将通过JS动态生成 -->
+                            <div class="heatmap-placeholder">
+                                <p>加载股票热度数据...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 最近活动 -->
+            <section class="recent-activity">
+                <div class="activity-header">
+                    <h3>最近活动</h3>
+                    <a href="history.html" class="view-all">查看全部 →</a>
+                </div>
+                <div class="activity-list" id="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-icon">📈</div>
+                        <div class="activity-content">
+                            <div class="activity-title">正在加载活动记录...</div>
+                            <div class="activity-time">--:--</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 快速操作 -->
+            <section class="quick-actions">
+                <h3>快速操作</h3>
+                <div class="actions-grid">
+                    <button class="action-btn" onclick="window.location.href='index.html'">
+                        <span class="action-icon">🔍</span>
+                        <span class="action-text">分析股票</span>
+                    </button>
+                    <button class="action-btn" onclick="window.location.href='portfolio.html'">
+                        <span class="action-icon">💼</span>
+                        <span class="action-text">创建组合</span>
+                    </button>
+                    <button class="action-btn" onclick="window.location.href='backtest.html'">
+                        <span class="action-icon">⚙️</span>
+                        <span class="action-text">策略回测</span>
+                    </button>
+                    <button class="action-btn" onclick="window.location.href='data.html'">
+                        <span class="action-icon">📊</span>
+                        <span class="action-text">数据同步</span>
+                    </button>
+                    <button class="action-btn" onclick="window.location.href='settings.html'">
+                        <span class="action-icon">⚙️</span>
+                        <span class="action-text">账户设置</span>
+                    </button>
+                    <button class="action-btn" onclick="showUpgradeModal()">
+                        <span class="action-icon">🚀</span>
+                        <span class="action-text">升级账户</span>
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 升级账户模态框 -->
+    <div id="upgrade-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>升级到高级账户</h2>
+                <button class="modal-close" onclick="closeUpgradeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="upgrade-features">
+                    <h3>高级账户特权</h3>
+                    <ul>
+                        <li>✅ 无限次股票分析</li>
+                        <li>✅ 完整历史数据访问</li>
+                        <li>✅ 深度AI分析报告</li>
+                        <li>✅ 全部策略回测功能</li>
+                        <li>✅ 数据导出功能</li>
+                        <li>✅ API访问权限</li>
+                        <li>✅ 优先技术支持</li>
+                    </ul>
+                </div>
+                <div class="upgrade-pricing">
+                    <h3>定价方案</h3>
+                    <div class="pricing-options">
+                        <div class="pricing-option">
+                            <h4>月度订阅</h4>
+                            <div class="price">¥99<span>/月</span></div>
+                            <button class="btn-primary">立即订阅</button>
+                        </div>
+                        <div class="pricing-option recommended">
+                            <div class="recommended-badge">推荐</div>
+                            <h4>年度订阅</h4>
+                            <div class="price">¥899<span>/年</span></div>
+                            <div class="savings">节省 ¥289</div>
+                            <button class="btn-primary">立即订阅</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局认证状态
+        class AuthService {
+            constructor() {
+                this.accessToken = localStorage.getItem('access_token');
+                this.refreshToken = localStorage.getItem('refresh_token');
+                this.userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+            }
+
+            async validateToken() {
+                if (!this.accessToken) {
+                    return false;
+                }
+
+                try {
+                    const response = await fetch('/api/users/me', {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`
+                        }
+                    });
+
+                    if (response.status === 401) {
+                        // 令牌过期，尝试刷新
+                        return await this.refreshAccessToken();
+                    }
+
+                    if (!response.ok) {
+                        return false;
+                    }
+
+                    const userData = await response.json();
+                    this.userInfo = userData;
+                    localStorage.setItem('user_info', JSON.stringify(userData));
+                    return true;
+                } catch (error) {
+                    console.error('令牌验证失败:', error);
+                    return false;
+                }
+            }
+
+            async refreshAccessToken() {
+                if (!this.refreshToken) {
+                    return false;
+                }
+
+                try {
+                    const response = await fetch('/api/auth/refresh', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.refreshToken}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        return false;
+                    }
+
+                    const data = await response.json();
+                    this.accessToken = data.access_token;
+                    this.refreshToken = data.refresh_token;
+
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('refresh_token', data.refresh_token);
+
+                    return true;
+                } catch (error) {
+                    console.error('刷新令牌失败:', error);
+                    return false;
+                }
+            }
+
+            async logout() {
+                try {
+                    await fetch('/api/auth/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`
+                        }
+                    });
+                } catch (error) {
+                    console.error('登出失败:', error);
+                } finally {
+                    this.clearAuth();
+                }
+            }
+
+            clearAuth() {
+                this.accessToken = null;
+                this.refreshToken = null;
+                this.userInfo = {};
+
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                localStorage.removeItem('user_info');
+                localStorage.removeItem('remember_me');
+            }
+
+            isAuthenticated() {
+                return !!this.accessToken;
+            }
+
+            getUserRole() {
+                return this.userInfo.role || 'free';
+            }
+
+            getUserEmail() {
+                return this.userInfo.email || '';
+            }
+
+            getUserName() {
+                return this.userInfo.username || this.userInfo.email || '用户';
+            }
+        }
+
+        // 初始化认证服务
+        const authService = new AuthService();
+
+        // 页面初始化
+        async function initDashboard() {
+            // 检查认证状态
+            const isValid = await authService.validateToken();
+            if (!isValid) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // 更新用户信息
+            updateUserInfo();
+
+            // 加载统计数据
+            loadStats();
+
+            // 加载活动图表
+            loadActivityChart();
+
+            // 加载最近活动
+            loadRecentActivity();
+
+            // 加载股票热度
+            loadStockHeatmap();
+        }
+
+        // 更新用户信息显示
+        function updateUserInfo() {
+            document.getElementById('user-name').textContent = authService.getUserName();
+            document.getElementById('user-email').textContent = authService.getUserEmail();
+            document.getElementById('greeting-name').textContent = authService.getUserName();
+
+            const role = authService.getUserRole();
+            const roleElement = document.getElementById('user-role');
+            roleElement.innerHTML = '';
+
+            let roleText, roleClass;
+            switch (role) {
+                case 'admin':
+                    roleText = '管理员';
+                    roleClass = 'admin';
+                    break;
+                case 'premium':
+                    roleText = '高级用户';
+                    roleClass = 'premium';
+                    break;
+                default:
+                    roleText = '免费用户';
+                    roleClass = 'free';
+            }
+
+            const badge = document.createElement('span');
+            badge.className = `role-badge ${roleClass}`;
+            badge.textContent = roleText;
+            roleElement.appendChild(badge);
+
+            // 更新用户头像（简单实现）
+            const userName = authService.getUserName();
+            const avatarElement = document.getElementById('user-avatar');
+            if (userName) {
+                const firstChar = userName.charAt(0).toUpperCase();
+                avatarElement.textContent = firstChar;
+            }
+        }
+
+        // 加载统计数据
+        async function loadStats() {
+            try {
+                // 这里可以调用API获取统计数据
+                // 暂时使用模拟数据
+                const mockStats = {
+                    todayAnalysis: 5,
+                    analysisChange: '+25%',
+                    portfolioCount: 2,
+                    backtestCount: 8,
+                    accuracyRate: '78%'
+                };
+
+                document.getElementById('today-analysis').textContent = mockStats.todayAnalysis;
+                document.getElementById('analysis-change').textContent = mockStats.analysisChange;
+                document.getElementById('portfolio-count').textContent = mockStats.portfolioCount;
+                document.getElementById('backtest-count').textContent = mockStats.backtestCount;
+                document.getElementById('accuracy-rate').textContent = mockStats.accuracyRate;
+
+            } catch (error) {
+                console.error('加载统计数据失败:', error);
+            }
+        }
+
+        // 加载活动图表
+        function loadActivityChart() {
+            const ctx = document.getElementById('activity-chart').getContext('2d');
+            
+            // 模拟数据
+            const labels = ['1月', '2月', '3月', '4月', '5月', '6月'];
+            const analysisData = [12, 19, 15, 25, 22, 30];
+            const backtestData = [5, 8, 6, 12, 10, 15];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '股票分析',
+                            data: analysisData,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.4
+                        },
+                        {
+                            label: '策略回测',
+                            data: backtestData,
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: '用户活动趋势'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '次数'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 加载最近活动
+        async function loadRecentActivity() {
+            try {
+                // 这里可以调用API获取最近活动
+                // 暂时使用模拟数据
+                const mockActivities = [
+                    {
+                        icon: '📈',
+                        title: '分析了贵州茅台(600519)',
+                        time: '10分钟前',
+                        type: 'analysis'
+                    },
+                    {
+                        icon: '🔧',
+                        title: '运行了MACD策略回测',
+                        time: '1小时前',
+                        type: 'backtest'
+                    },
+                    {
+                        icon: '💼',
+                        title: '创建了"科技股组合"',
+                        time: '3小时前',
+                        type: 'portfolio'
+                    },
+                    {
+                        icon: '📊',
+                        title: '同步了股票数据',
+                        time: '5小时前',
+                        type: 'data'
+                    },
+                    {
+                        icon: '🔔',
+                        title: '设置了价格提醒',
+                        time: '昨天',
+                        type: 'alert'
+                    }
+                ];
+
+                const activityList = document.getElementById('activity-list');
+                activityList.innerHTML = '';
+
+                mockActivities.forEach(activity => {
+                    const activityItem = document.createElement('div');
+                    activityItem.className = 'activity-item';
+                    activityItem.innerHTML = `
+                        <div class="activity-icon">${activity.icon}</div>
+                        <div class="activity-content">
+                            <div class="activity-title">${activity.title}</div>
+                            <div class="activity-time">${activity.time}</div>
+                        </div>
+                    `;
+                    activityList.appendChild(activityItem);
+                });
+
+            } catch (error) {
+                console.error('加载最近活动失败:', error);
+            }
+        }
+
+        // 加载股票热度
+        function loadStockHeatmap() {
+            // 模拟热门股票数据
+            const hotStocks = [
+                { symbol: '600519', name: '贵州茅台', heat: 95 },
+                { symbol: '000001', name: '平安银行', heat: 85 },
+                { symbol: '601318', name: '中国平安', heat: 80 },
+                { symbol: '000858', name: '五粮液', heat: 75 },
+                { symbol: '002415', name: '海康威视', heat: 70 },
+                { symbol: '300750', name: '宁德时代', heat: 90 },
+                { symbol: '000333', name: '美的集团', heat: 65 },
+                { symbol: '002475', name: '立讯精密', heat: 60 }
+            ];
+
+            const heatmapContainer = document.getElementById('stock-heatmap');
+            heatmapContainer.innerHTML = '';
+
+            hotStocks.forEach(stock => {
+                const stockElement = document.createElement('div');
+                stockElement.className = 'heatmap-item';
+                stockElement.innerHTML = `
+                    <div class="heatmap-stock">
+                        <div class="stock-symbol">${stock.symbol}</div>
+                        <div class="stock-name">${stock.name}</div>
+                    </div>
+                    <div class="heatmap-bar">
+                        <div class="heatmap-fill" style="width: ${stock.heat}%"></div>
+                        <div class="heatmap-value">${stock.heat}%</div>
+                    </div>
+                `;
+                heatmapContainer.appendChild(stockElement);
+            });
+        }
+
+        // 刷新热度图
+        function refreshHeatmap() {
+            loadStockHeatmap();
+        }
+
+        // 登出
+        async function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                await authService.logout();
+                window.location.href = 'login.html';
+            }
+        }
+
+        // 显示升级模态框
+        function showUpgradeModal() {
+            document.getElementById('upgrade-modal').classList.remove('hidden');
+        }
+
+        // 关闭升级模态框
+        function closeUpgradeModal() {
+            document.getElementById('upgrade-modal').classList.add('hidden');
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initDashboard);
+
+        // 点击模态框外部关闭
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('upgrade-modal');
+            if (event.target === modal) {
+                closeUpgradeModal();
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-02-17T20:00:41.143886",
+  "system": {
+    "python_version": "3.14.1 (tags/v3.14.1:57e0d17, Dec  2 2025, 14:05:07) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "win32",
+    "working_directory": "C:\\OpenCodeProj"
+  },
+  "components": {
+    "backend": {
+      "exists": true,
+      "path": "C:\\OpenCodeProj\\backend"
+    },
+    "frontend": {
+      "exists": true,
+      "path": "C:\\OpenCodeProj\\frontend"
+    },
+    "database": {
+      "exists": false,
+      "path": null
+    },
+    "config": {
+      "exists": true,
+      "path": "C:\\OpenCodeProj\\backend\\config.py"
+    },
+    "auth_module": {
+      "exists": true,
+      "path": "C:\\OpenCodeProj\\backend\\auth"
+    }
+  },
+  "tests": {},
+  "recommendations": []
+}

@@ -1,55 +1,224 @@
-const API_BASE = "/api"; // 使用相对路径，因为前端由同一后端托管
+const API_BASE = "/api";
 let priceChart = null;
 
-// 页面加载时的路由逻辑
-document.addEventListener('DOMContentLoaded', () => {
-    const path = window.location.pathname;
-    if (path.includes('factors.html')) {
-        initFactorsPage();
-    } else if (path.includes('data.html')) {
-        // 延迟一小会儿确保 DOM 渲染完成（虽然 DOMContentLoaded 已经触发）
-        setTimeout(loadMonitoredStocks, 100);
+async function loginUser(username, password, remember) {
+    const response = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            username: username,
+            password: password
+        })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+        throw new Error(data.detail || '登录失败');
     }
-    initFactorTabs();
-});
+    
+    if (data.token) {
+        localStorage.setItem('access_token', data.token);
+        localStorage.setItem('user_info', JSON.stringify(data.user || {}));
+        if (remember) {
+            localStorage.setItem('remember_me', 'true');
+        }
+        return { success: true, data: data };
+    }
+    
+    return { success: false, message: '登录失败' };
+}
 
-function showLoading(text = "正在努力分析中...") {
-    const loader = document.getElementById('global-loading');
-    const msg = document.getElementById('loading-msg');
-    if (loader && msg) {
-        msg.textContent = text;
+async function registerUser(email, username, password) {
+    const response = await fetch(`${API_BASE}/register`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            email: email,
+            username: username,
+            password: password,
+            full_name: username
+        })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+        throw new Error(data.detail || '注册失败');
+    }
+    
+    return { success: true, data: data };
+}
+
+async function requestPasswordReset(email) {
+    const response = await fetch(`${API_BASE}/auth/password-reset/request`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email })
+    });
+    
+    if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || '请求失败');
+    }
+    
+    return { success: true };
+}
+
+function logout() {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+        fetch(`${API_BASE}/auth/logout`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        }).catch(() => {});
+    }
+    
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_info');
+    localStorage.removeItem('remember_me');
+    
+    window.location.href = 'login.html';
+}
+
+function getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+async function fetchWithAuth(url, options = {}) {
+    const headers = {
+        ...options.headers,
+        ...getAuthHeaders()
+    };
+    
+    const response = await fetch(url, { ...options, headers });
+    
+    if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user_info');
+        window.location.href = 'login.html';
+        throw new Error('认证已过期，请重新登录');
+    }
+    
+    return response;
+}
+
+function checkAuthStatus() {
+    const accessToken = localStorage.getItem('access_token');
+    const userInfo = localStorage.getItem('user_info');
+    
+    const loginLink = document.getElementById('login-link');
+    const registerLink = document.getElementById('register-link');
+    const userInfoEl = document.getElementById('user-info');
+    const usernameDisplay = document.getElementById('username-display');
+    const userAvatar = document.getElementById('user-avatar');
+    const userName = document.getElementById('user-name');
+    const userRole = document.getElementById('user-role');
+    
+    if (accessToken) {
+        if (loginLink) loginLink.classList.add('hidden');
+        if (registerLink) registerLink.classList.add('hidden');
+        if (userInfoEl) userInfoEl.classList.remove('hidden');
+        
+        if (userInfo) {
+            try {
+                const user = JSON.parse(userInfo);
+                if (usernameDisplay) usernameDisplay.textContent = user.username || user.email || '用户';
+                if (userAvatar) userAvatar.textContent = (user.username || user.email || 'U').charAt(0).toUpperCase();
+                if (userName) userName.textContent = user.username || '用户';
+                if (userRole) userRole.textContent = user.role || '投资者';
+            } catch (e) {}
+        }
+    } else {
+        if (loginLink) loginLink.classList.remove('hidden');
+        if (registerLink) registerLink.classList.remove('hidden');
+        if (userInfoEl) userInfoEl.classList.add('hidden');
+        
+        if (userAvatar) userAvatar.textContent = '?';
+        if (userName) userName.textContent = '未登录';
+        if (userRole) userRole.textContent = '请先登录';
+    }
+}
+
+function showLoading(text = "正在加载...") {
+    const loader = document.getElementById('loading-overlay');
+    const msg = document.getElementById('loading-text');
+    if (loader) {
+        if (msg) msg.textContent = text;
         loader.classList.remove('hidden');
+        loader.style.display = 'flex';
     }
 }
 
 function hideLoading() {
-    const loader = document.getElementById('global-loading');
+    const loader = document.getElementById('loading-overlay');
     if (loader) {
         loader.classList.add('hidden');
+        loader.style.display = 'none';
     }
 }
 
 function updateProgress(progress, status) {
     const container = document.getElementById('progress-container');
-    const indicator = document.getElementById('progress-indicator');
+    const indicator = document.getElementById('progress-bar');
     const statusText = document.getElementById('progress-status');
     const percentText = document.getElementById('progress-percent');
 
-    if (container.classList.contains('hidden')) {
+    if (container && container.classList.contains('hidden')) {
         container.classList.remove('hidden');
     }
 
-    indicator.style.width = `${progress}%`;
-    statusText.textContent = status;
-    percentText.textContent = `${progress}%`;
+    if (indicator) indicator.style.width = `${progress}%`;
+    if (statusText) statusText.textContent = status;
+    if (percentText) percentText.textContent = `${progress}%`;
 
     if (progress >= 100) {
         setTimeout(() => {
-            container.classList.add('hidden');
-            // 重置进度
-            indicator.style.width = '0%';
-            percentText.textContent = '0%';
-        }, 2000);
+            if (container) container.classList.add('hidden');
+            if (indicator) indicator.style.width = '0%';
+            if (percentText) percentText.textContent = '0%';
+        }, 1000);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    checkAuthStatus();
+    
+    const path = window.location.pathname;
+    if (path.includes('factors.html')) {
+        initFactorsPage();
+    } else if (path.includes('data.html')) {
+        setTimeout(loadMonitoredStocks, 100);
+    }
+    
+    initFactorTabs();
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const symbolParam = urlParams.get('symbol');
+    if (symbolParam) {
+        const symbolInput = document.getElementById('symbol-input');
+        if (symbolInput) {
+            symbolInput.value = symbolParam;
+        }
+    }
+});
+
+function useSymbol(symbol) {
+    const symbolInput = document.getElementById('symbol-input');
+    if (symbolInput) {
+        symbolInput.value = symbol;
+        analyzeStock();
     }
 }
 
@@ -62,76 +231,11 @@ async function initFactorsPage() {
         return;
     }
 
-    document.getElementById('stock-title').textContent = `${symbol} 量化因子深度分析`;
+    const titleEl = document.getElementById('stock-title');
+    if (titleEl) titleEl.textContent = `${symbol} 量化因子深度分析`;
     showLoading(`正在获取 ${symbol} 的详细因子数据...`);
     await fetchFactorsData(symbol);
     hideLoading();
-}
-
-function useSymbol(symbol) {
-    document.getElementById('symbol-input').value = symbol;
-    analyzeStock();
-}
-
-async function analyzeStock() {
-    const symbol = document.getElementById('symbol-input').value.trim();
-    if (!symbol) return;
-
-    // 更新详情页链接
-    const detailLink = document.getElementById('view-factors-btn');
-    if (detailLink) {
-        detailLink.href = `factors.html?symbol=${symbol}`;
-        detailLink.classList.remove('hidden');
-    }
-
-    // UI States
-    showLoading(`正在分析 ${symbol} ... 请稍候`);
-    const resultsEl = document.getElementById('results');
-    const btn = document.getElementById('analyze-btn');
-
-    resultsEl.classList.add('hidden');
-    if (btn) btn.disabled = true;
-
-    // 开启 SSE 进度监听
-    const eventSource = new EventSource(`${API_BASE}/progress/${symbol}`);
-    eventSource.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            updateProgress(data.progress, data.status);
-            if (data.progress >= 100) {
-                eventSource.close();
-            }
-        } catch (e) {
-            console.error("SSE parsing error:", e);
-        }
-    };
-    eventSource.onerror = () => {
-        eventSource.close();
-    };
-
-    try {
-        // 并行调用接口
-        const responsePromise = fetch(`${API_BASE}/analyze/${symbol}`);
-        const historyPromise = fetchHistoryData(symbol);
-        const factorsPromise = fetchFactorsData(symbol);
-
-        const response = await responsePromise;
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || `分析请求失败 (${response.status})`);
-        }
-        const data = await response.json();
-        renderResults(data);
-
-        await Promise.all([historyPromise, factorsPromise]);
-    } catch (e) {
-        alert("过程出错: " + e.message);
-        console.error(e);
-        updateProgress(0, "分析出错");
-    } finally {
-        hideLoading();
-        if (btn) btn.disabled = false;
-    }
 }
 
 async function fetchFactorsData(symbol, category = 'all') {
@@ -141,10 +245,8 @@ async function fetchFactorsData(symbol, category = 'all') {
         if (!response.ok) return;
         const data = await response.json();
 
-        // 渲染因子
         renderFactors(data, category !== 'all');
 
-        // 如果在独立页面，更新日期
         const dateEl = document.getElementById('update-date');
         if (dateEl) dateEl.textContent = data.date;
 
@@ -158,14 +260,12 @@ async function fetchFactorsData(symbol, category = 'all') {
 }
 
 function initFactorTabs() {
-    // 监听所有 Tab 按钮的点击
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('tab-btn')) {
             const btn = e.target;
             const container = btn.closest('.card, .container');
             if (!container) return;
 
-            // 切换 active 状态
             container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
@@ -219,23 +319,11 @@ function renderFactors(data, isPartial = false) {
                 }
             }
         }
-
-        if (window.location.pathname.includes('factors.html')) {
-            const activeTabBtn = document.querySelector('.tab-btn.active');
-            if (activeTabBtn) {
-                const activeTab = activeTabBtn.getAttribute('data-cat');
-                if (activeTab !== 'all') {
-                    const map = { 'technical': 'tech-factors', 'fundamental': 'fundamental-factors', 'sentiment': 'sentiment-factors', 'northbound': 'northbound-factors' };
-                    groupEl.style.display = (map[activeTab] === id) ? 'block' : 'none';
-                } else {
-                    groupEl.style.display = 'block';
-                }
-            }
-        }
     }
 }
 
 function getSignalClass(signal) {
+    if (!signal) return '';
     if (signal.includes('涨') || signal.includes('买') || signal.includes('强') || signal.includes('活跃') || signal.includes('放量') || signal.includes('低估') || signal.includes('优异')) return 'sig-up';
     if (signal.includes('跌') || signal.includes('卖') || signal.includes('弱') || signal.includes('低迷') || signal.includes('缩量') || signal.includes('高估') || signal.includes('资金流出')) return 'sig-down';
     return '';
@@ -253,7 +341,7 @@ async function fetchHistoryData(symbol) {
 }
 
 function renderHistoryTable(history) {
-    const body = document.getElementById('history-body');
+    const body = document.getElementById('history-body') || document.getElementById('history-table');
     if (!body) return;
     body.innerHTML = '';
 
@@ -268,23 +356,10 @@ function renderHistoryTable(history) {
             <td class="${priceClass}">${item.high.toFixed(2)}</td>
             <td class="${priceClass}">${item.low.toFixed(2)}</td>
             <td class="${priceClass}">${item.close.toFixed(2)}</td>
-            <td>${(item.volume / 10000).toFixed(2)} 万</td>
+            <td>${(item.volume / 10000).toFixed(0)} 万</td>
         `;
         body.appendChild(row);
     });
-}
-
-function renderResults(data) {
-    document.getElementById('results').classList.remove('hidden');
-    const trend = data.data.predicted_trend;
-    const trendEl = document.getElementById('pred-trend');
-    trendEl.textContent = trend === 'UP' ? '看涨' : '看跌';
-    trendEl.className = `prediction-value ${trend}`;
-    document.getElementById('curr-price').textContent = data.data.current_price.toFixed(2);
-    document.getElementById('confidence').textContent = data.data.confidence.toFixed(1);
-    renderChart(data.data.history_dates, data.data.history_prices);
-    const reportContent = data.report || "No report generated.";
-    document.getElementById('report-content').innerHTML = marked.parse(reportContent);
 }
 
 function renderChart(dates, prices) {
@@ -312,12 +387,10 @@ function renderChart(dates, prices) {
         options: {
             responsive: true, maintainAspectRatio: false,
             plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-            scales: { x: { display: false }, y: { grid: { color: '#334155', borderDash: [5, 5] }, ticks: { color: '#94a3b8' } } }
+            scales: { x: { display: false }, y: { grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8' } } }
         }
     });
 }
-
-// --- 数据管理中心逻辑 (NEW) ---
 
 async function loadMonitoredStocks() {
     const body = document.getElementById('data-body');
@@ -337,37 +410,17 @@ async function loadMonitoredStocks() {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td><strong>${stock.symbol}</strong></td>
-                <td><span class="factor-sig ${stock.status === '已缓存' ? 'sig-up' : ''}">${stock.status}</span></td>
+                <td><span class="badge ${stock.status === '已缓存' ? 'badge-success' : 'badge-warning'}">${stock.status}</span></td>
                 <td>${stock.last_sync}</td>
-                <td class="table-actions">
-                    <button class="btn-small" onclick="syncStock('${stock.symbol}')">同步</button>
-                    <button class="btn-small danger" onclick="removeStockFromPool('${stock.symbol}')">删除</button>
+                <td>
+                    <button class="btn btn-sm btn-outline" onclick="syncStock('${stock.symbol}')">同步</button>
+                    <button class="btn btn-sm btn-danger" onclick="removeStockFromPool('${stock.symbol}')">删除</button>
                 </td>
             `;
             body.appendChild(row);
         });
     } catch (e) {
         console.error("加载监控列表失败:", e);
-    }
-}
-
-async function doAddStock() {
-    const input = document.getElementById('modal-symbol');
-    const symbol = input.value.trim();
-    if (!symbol) return;
-
-    showLoading("正在添加股票...");
-    try {
-        const response = await fetch(`${API_BASE}/data/stocks/${symbol}`, { method: 'POST' });
-        if (response.ok) {
-            hideAddModal();
-            input.value = '';
-            await loadMonitoredStocks();
-        }
-    } catch (e) {
-        alert("添加失败");
-    } finally {
-        hideLoading();
     }
 }
 
@@ -397,20 +450,3 @@ async function syncStock(symbol) {
         hideLoading();
     }
 }
-
-async function syncAllStocks() {
-    showLoading("正在全量同步监控池数据...");
-    try {
-        const response = await fetch(`${API_BASE}/data/sync`, { method: 'POST' });
-        if (response.ok) {
-            await loadMonitoredStocks();
-        }
-    } catch (e) {
-        alert("同步出错");
-    } finally {
-        hideLoading();
-    }
-}
-
-function showAddModal() { document.getElementById('add-modal').classList.remove('hidden'); }
-function hideAddModal() { document.getElementById('add-modal').classList.add('hidden'); }
