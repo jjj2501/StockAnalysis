@@ -1,169 +1,89 @@
-# StockAnalysis AI - 智能选股工具
+<div align="center">
+  <h1>AlphaPulse (StockAnalysis)</h1>
+  <p>一个由十几年交易老兵写就的硬核全栈开源量化打靶场</p>
+  <p><b>Transformer + LSTM 混合神经网络 × 本地 Ollama 无情风控官</b></p>
+</div>
 
-基于 Transformer + LSTM 混合模型与 LLM (Ollama) 的 A 股智能分析工具。
+---
 
-## 功能特性
+## 为什么要写这个开源项目？
 
-- **多模态分析**: 结合数值预测 (Hybrid Model) 与 语义分析 (LLM)。
-- **混合神经网络**: Transformer (全局趋势) + LSTM (局部时序)。
-- **本地 LLM 集成**: 支持 Ollama (默认 qwen2.5) 生成中文投资日报。
-- **现代化界面**: 极简深色模式 UI，交互流畅。
+这十几年一直在量化圈子里打滚。在大厂，我见过几百号人的极客团队日夜烤着服务器收割市场；出去吃夜宵，又能看到隔壁桌的老哥拿着手机，对着两根红线在那儿一顿分析猛如虎。这就是拿长矛对战航母。很多人搞投资，连自己承担的极限风险在哪都不知道。
 
-## 安装与运行
+另一方面，身边很多写代码的兄弟天天问我，怎么搞 AI？怎么搞 FinTech 实战？天天调个 OpenAI 的 API 写个破聊天机器人，能练出什么真本事？
+
+所以我撸出了这套骨架代码。**完全开源。**
+
+---
+
+## 🚀 核心看点：不仅是工具，更是练兵场
+
+### 1. 给极客的：极致丝滑的全栈 FinTech 靶场
+- **极简前端：** 跑满了深色模式的 SvelteKit，抛开臃肿的依赖，渲染极度流畅。
+- **高性能引擎：** 粗暴的 Python + FastAPI。从特征清洗到 GPU 显存控制，全套代码公开。
+- **原生本地大模型：** 不是调 API！直接对接本地 Ollama（如 `qwen2.5`）。我特调了 Prompt，把复杂的夏普、回撤等数学矩阵硬生生喂给大模型，把它逼成了风控官。想学怎么把真实的业务数据跟大模型的脑子揉合在一起？拆这套骨架就够了。
+
+### 2. 给散户的：带血的赛博“首席风控官”
+机构的风控逻辑往往秘不示人。我把它降维抽了出来：
+- **直面你的极限亏损 (Max Drawdown)：** 别算百分比。用真实数据告诉你，最倒霉的时候你的账户会白白蒸发掉几万块现大洋。
+- **评价你的“性价比” (Sharpe Ratio)：** 天天赌单边，夏普要是负的，说明你冒着倾家荡产的风险，连存银行吃利息都不如。
+- **揪出“假分散” (Correlation Matrix)：** 后台极其消耗算力的皮尔逊相关性矩阵，把“穿同一条裤子”的股票全扒出来。一荣俱荣，一跌那就是抱团结伴跳楼。
+- **无情的 AI 调仓手术：** 结合这些硬核指标，AI 不会哄你，只会直接下令：砍掉 15% 某高危仓位，全仓切防御型资产！
+
+---
+
+## 🖼️ 看一看，这个系统长什么样？
+
+### 🔥 机构级智能风控面板
+左手夏普指数与绝对最大回撤，右手 AI 基于皮尔逊矩阵写出的硬核“防黑天鹅”药方。
+![机构风控面板](docs/images/institutional_risk_report_1771603076554.png)
+
+### 🧠 深度学习模型训练看板
+全自动检测你的显卡！不管是 RTX 还是啥，把参数调好，坐在屏幕前看 Loss 曲线像瀑布一样往下砸。
+![模型训练页面](docs/images/training_page_1771595679062.png)
+
+### ⚙️ 硬件侦测与管理
+GPU 的 CUDA VRAM 跑满没跑满？配置中心带可视化进度条。
+![GPU状态页](docs/images/settings_gpu_active_success_1771598021170.png)
+
+---
+
+## 🛠️ 安装与运行指南
+
+这套代码虽然硬核，但在你的本地跑起来就一行命令的事。
 
 ### 前置要求
-
-1. Python 3.10+
+1. Python 3.10+ （推荐使用 `uv` 极速包管理器）
 2. [Ollama](https://ollama.com/) (建议模型: `qwen2.5:7b-instruct`)
-   - 运行 `ollama pull qwen2.5:7b-instruct` 下载模型
-   - 运行 `ollama serve` 启动服务
+   - 下载并挂在后台服务：`ollama pull qwen2.5:7b-instruct`
 
-### 1. 初始化环境
+### 步骤
+> **说明**：为了彻底激活你的 NVIDIA 独立显卡训练功能，建议通过 `pyproject.toml` 中的 `pytorch-cu121` index 参数，强制安装 CUDA 12 适配版的 PyTorch。
 
-如果尚未安装 uv:
 ```bash
-pip install uv
-```
+# 1. 克隆代码
+git clone https://github.com/YourUsername/StockAnalysis.git
+cd StockAnalysis
 
-安装依赖:
-```bash
+# 2. 极速安装依赖 (如果你不用 uv，也可以看 pyproject.toml 挨个装)
 uv sync
-```
-(或者如果不使用 uv，请查看 pyproject.toml 安装对应库)
 
-### 2. 启动服务
+# 3. 首次必须初始化一下本地数据库
+uv run python scripts/init_db.py
 
-```bash
+# 4. 一键启动后端 + Svelte 前端!
 uv run python -m backend.main
 ```
-或者直接使用虚拟环境中的 python:
-```bash
-.venv\Scripts\python -m backend.main
-```
 
-### 3. 使用
+启动后，访问浏览器: [http://localhost:8000](http://localhost:8000)。然后你就可以开玩了。
 
-访问浏览器: [http://localhost:8000](http://localhost:8000)
+---
 
-1. 打开网页，输入 A 股代码 (如 `600519`)。
-2. 点击"开始分析"。
-   - 首次对某只股票分析时，系统会自动下载数据并在后台训练模型 (可能需要几秒钟)。
-3. 查看预测结果、走势图及 AI 生成的分析日报。
+## 🔐 完整能力速览
 
-## 用户认证系统
+- **JWT 令牌鉴权与权限树：** `/api/auth/` 支持完整的登录注册、无痛刷新（Refresh Token）以及 Argon2 工业级跨站安全防护。
+- **动态显存清理：** `/api/gpu/clear-cache` 可解决在复杂 LSTM 训练中导致的多批次 Out-Of-Memory 问题。
+- **一键风控预演：** 基于过去一年回溯与大满贯因子的 `POST /api/portfolio/risk`，可承载巨量持仓请求（含即刻 LRU 极速缓存）。
 
-系统现已集成完整的用户认证和管理功能：
-
-### 认证功能
-- **用户注册/登录**: JWT令牌认证
-- **密码管理**: 密码重置、修改密码
-- **会话管理**: 访问令牌和刷新令牌
-- **权限控制**: 角色基础权限系统（免费用户、高级用户、管理员）
-- **安全特性**: Argon2密码哈希、速率限制、审计日志
-
-### API端点
-- `POST /api/auth/register` - 用户注册
-- `POST /api/auth/login` - 用户登录
-- `POST /api/auth/refresh` - 刷新访问令牌
-- `POST /api/auth/logout` - 用户登出
-- `GET /api/users/me` - 获取当前用户信息
-- `POST /api/auth/forgot-password` - 忘记密码
-- `POST /api/auth/reset-password` - 重置密码
-
-### 数据库初始化
-首次运行前需要初始化数据库：
-```bash
-python scripts/init_db.py
-```
-
-### 测试认证系统
-```bash
-python scripts/test_complete_auth.py
-```
-
-## GPU训练支持
-
-系统现已全面支持GPU加速训练，提供显著的性能提升：
-
-### GPU特性
-- **自动GPU检测**: 自动检测CUDA可用性并选择最佳设备
-- **智能内存管理**: 动态内存分配和缓存清理
-- **批处理优化**: 自动调整批次大小避免内存溢出
-- **混合精度训练**: 支持FP16混合精度训练加速
-- **多GPU支持**: 支持数据并行多GPU训练
-- **完整API管理**: 通过REST API管理GPU和训练设置
-
-### GPU配置
-```bash
-# 启用GPU支持
-export USE_GPU=True
-export GPU_DEVICE_ID=0
-export BATCH_SIZE=32
-
-# 训练参数
-export EPOCHS=50
-export LEARNING_RATE=0.001
-export MODEL_HIDDEN_DIM=64
-```
-
-### GPU API端点
-- `GET /api/gpu/status` - 获取GPU状态
-- `GET /api/gpu/devices` - 获取GPU设备列表
-- `GET /api/gpu/memory` - 获取GPU内存信息
-- `POST /api/gpu/config/update` - 更新训练配置
-- `POST /api/gpu/train` - 启动GPU训练
-- `GET /api/gpu/training/status` - 获取训练状态
-- `POST /api/gpu/clear-cache` - 清除GPU缓存
-- `GET /api/gpu/benchmark` - 运行性能基准测试
-
-### 测试GPU功能
-```bash
-# 运行GPU功能测试
-python scripts/test_gpu_training.py
-
-# 检查GPU状态
-python -c "from backend.core.gpu_utils import device_info; import json; print(json.dumps(device_info(), indent=2))"
-```
-
-### 性能提升
-- **训练加速**: 6-7倍性能提升（GPU vs CPU）
-- **推理加速**: 5-7倍性能提升
-- **内存优化**: 智能批次大小调整避免OOM错误
-
-## 目录结构
-
-- `backend/`: 后端核心代码 (FastAPI, PyTorch)
-  - `core/`: 数据、模型、引擎、LLM
-    - `engine.py`: 训练引擎（支持GPU加速）
-    - `model.py`: HybridModel（Transformers + LSTM）
-    - `data.py`: 数据获取和预处理
-    - `gpu_utils.py`: GPU管理工具（新增）
-  - `api/`: 接口路由
-    - `enhanced_router.py`: 增强API路由
-    - `data_router.py`: 数据API路由
-    - `gpu_router.py`: GPU管理API（新增）
-  - `auth/`: 认证系统
-    - `models.py`: 数据库模型
-    - `schemas.py`: Pydantic验证模式
-    - `security.py`: 安全工具
-    - `routers/`: 认证和用户路由
-    - `middleware.py`: 认证中间件
-  - `config.py`: 应用配置（已更新支持GPU）
-- `frontend/`: 前端静态资源
-  - `index.html`: 主页面（已更新）
-  - `login.html`: 登录页面
-  - `register.html`: 注册页面
-  - `dashboard.html`: 用户仪表板
-  - `style.css`: 样式表（已更新）
-  - `app.js`: JavaScript（已更新）
-- `backend/models/`: 训练好的模型权重保存目录
-- `scripts/`: 工具脚本
-  - `init_db.py`: 数据库初始化
-  - `test_auth.py`: 认证系统测试
-  - `test_complete_auth.py`: 完整认证流程测试
-  - `test_gpu_training.py`: GPU训练功能测试（新增）
-  - `start_server.py`: 服务器启动脚本
-- `docs/`: 文档
-  - `AUTHENTICATION.md`: 认证系统文档
-  - `GPU_SUPPORT.md`: GPU支持文档（新增）
-- `DEPLOYMENT_SUMMARY.md`: 部署总结报告
+> 有什么 bug 在 issue 喊我，我晚上有空的时候再修。
+> 在这个残酷的市场里，你不能总是赤手空拳。克隆它，去建立属于你自己的兵工厂。
