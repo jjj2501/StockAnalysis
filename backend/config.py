@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # 应用配置
     APP_NAME: str = "StockAnalysis AI"
     API_V1_STR: str = "/api"
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     
     # 邮箱配置（用于密码重置）
     SMTP_HOST: Optional[str] = os.getenv("SMTP_HOST")
