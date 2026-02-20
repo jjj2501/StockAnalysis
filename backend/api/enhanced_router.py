@@ -376,6 +376,107 @@ async def get_user_portfolio(
         "total_value": 0
     }
 
+from typing import List
+
+class PortfolioItem(BaseModel):
+    symbol: str
+    shares: int
+    price: float
+
+class PortfolioRiskRequest(BaseModel):
+    portfolio: List[PortfolioItem]
+    force_refresh: bool = False
+
+# 简单的内存缓存
+# 结构: {"hash_key_YYYYMMDD": risk_result_dict}
+_RISK_CACHE = {}
+
+import hashlib
+import json
+import datetime
+
+def _get_portfolio_cache_key(portfolio_data: List[dict]) -> str:
+    # 按照 symbol 排序保证顺序无关
+    sorted_p = sorted(portfolio_data, key=lambda x: x["symbol"])
+    json_str = json.dumps(sorted_p)
+    # 附加上当天的日期作为缓存失效机制（每天必然要重新算一次最新的）
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+    md5_hash = hashlib.md5(json_str.encode('utf-8')).hexdigest()
+    return f"{md5_hash}_{today_str}"
+
+@router.post("/portfolio/risk")
+async def calculate_portfolio_risk(
+    request: PortfolioRiskRequest,
+    user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    计算投资组合风控指标 (VaR, CVaR) 并生成 AI 风险诊断报告 (带本地缓存)
+    """
+    try:
+        portfolio_data = [item.dict() for item in request.portfolio]
+        if not portfolio_data:
+            raise HTTPException(status_code=400, detail="投资组合为空")
+            
+        cache_key = _get_portfolio_cache_key(portfolio_data)
+        
+        # 1. 尝试读缓存
+        if not request.force_refresh and cache_key in _RISK_CACHE:
+            logger.info("命中投资组合风控缓存，直接返回")
+            return _RISK_CACHE[cache_key]
+            
+        logger.info("未命中缓存或要求强制刷新，开始后台计算投资组合风控并请求 LLM...")
+        
+        from backend.core.risk import RiskManager
+        risk_manager = RiskManager()
+        
+        # 2. 计算各个维度的风控数据
+        risk_result = risk_manager.calculate_portfolio_risk(portfolio_data)
+
+        if "error" in risk_result:
+            raise HTTPException(status_code=400, detail=risk_result["error"])
+        
+        # 2. 调用 LLM 生成分析报告
+        report = llm_client.generate_portfolio_risk_report(portfolio_data, risk_result)
+        
+        # 将生成的报告存入结果中
+        risk_result["ai_report"] = report
+        risk_result["cached"] = False # 标记本次是否是从缓存读的
+        
+        # 更新缓存
+        _RISK_CACHE[cache_key] = risk_result
+        
+        # 拷贝一份避免后续被改
+        response_data = dict(risk_result)
+        response_data["cached"] = False
+        if not request.force_refresh and cache_key in _RISK_CACHE:
+            _RISK_CACHE[cache_key]["cached"] = True
+        
+        # 记录用户活动
+        if user and background_tasks:
+            background_tasks.add_task(
+                create_audit_log,
+                db=db,
+                user_id=user.id,
+                action="portfolio_risk_analysis",
+                resource_type="portfolio",
+                details={
+                    "item_count": len(portfolio_data),
+                    "total_value": risk_result.get("total_value"),
+                    "var_99": risk_result.get("metrics", {}).get("historical", {}).get("var_99")
+                }
+            )
+            
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Portfolio risk calculation error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/user/history")
 async def get_user_history(
