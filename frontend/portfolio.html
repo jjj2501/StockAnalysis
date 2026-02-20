@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投资组合 - StockAnalysis AI</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="index.html" class="sidebar-logo">
+                    <div class="logo-icon">SA</div>
+                    <span class="logo-text">StockAnalysis</span>
+                </a>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">主菜单</div>
+                    <a href="index.html" class="nav-item">
+                        <i>&#128200;</i>
+                        <span>股票分析</span>
+                    </a>
+                    <a href="backtest.html" class="nav-item">
+                        <i>&#128202;</i>
+                        <span>策略回测</span>
+                    </a>
+                    <a href="watchlist.html" class="nav-item">
+                        <i>&#11088;</i>
+                        <span>自选股</span>
+                    </a>
+                    <a href="portfolio.html" class="nav-item active">
+                        <i>&#128179;</i>
+                        <span>投资组合</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">数据</div>
+                    <a href="data.html" class="nav-item">
+                        <i>&#128451;</i>
+                        <span>数据中心</span>
+                    </a>
+                    <a href="factors.html" class="nav-item">
+                        <i>&#128269;</i>
+                        <span>因子分析</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">系统</div>
+                    <a href="settings.html" class="nav-item">
+                        <i>&#9881;</i>
+                        <span>个人设置</span>
+                    </a>
+                    <a href="#" class="nav-item" onclick="showApiDocs(); return false;">
+                        <i>&#128196;</i>
+                        <span>API文档</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer" id="sidebar-footer">
+                <div class="user-card" onclick="toggleUserMenu()">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-info">
+                        <div class="user-name" id="user-name">未登录</div>
+                        <div class="user-role" id="user-role">请先登录</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="top-header">
+                <h1 class="page-title">投资组合</h1>
+            </div>
+
+            <div class="content-area">
+                <div class="card" style="text-align: center; padding: 4rem;">
+                    <div style="font-size: 4rem; color: var(--text-muted); margin-bottom: 1rem;">&#128188;</div>
+                    <h3 style="margin-bottom: 0.5rem;">投资组合功能开发中</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                        我们正在构建强大的投资组合管理工具，敬请期待。
+                    </p>
+                    <a href="index.html" class="btn btn-primary">返回首页</a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 用户菜单 -->
+    <div id="user-dropdown" class="dropdown-menu" style="display: none;">
+        <a href="settings.html" class="dropdown-item">&#9881; 个人设置</a>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item" onclick="logout()" style="color: var(--danger);">&#128682; 退出登录</button>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // 页面加载完成后检查登录状态
+        window.addEventListener('load', function () {
+            checkAuth();
+
+            // 点击其他地方关闭用户菜单
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.user-card') && !e.target.closest('#user-dropdown')) {
+                    document.getElementById('user-dropdown').style.display = 'none';
+                }
+            });
+        });
+
+        // 切换用户菜单显示/隐藏
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-dropdown');
+            if (dropdown.style.display === 'none') {
+                const rect = document.querySelector('.user-card').getBoundingClientRect();
+                dropdown.style.display = 'block';
+                dropdown.style.position = 'fixed';
+                dropdown.style.bottom = (window.innerHeight - rect.top) + 'px';
+                dropdown.style.left = rect.left + 'px';
+            } else {
+                dropdown.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>

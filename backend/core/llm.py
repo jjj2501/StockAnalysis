@@ -9,8 +9,11 @@ class BaseLLM(abc.ABC):
     def generate_report(self, symbol: str, data: dict) -> str:
         pass
 
-    @abc.abstractmethod
     def generate_backtest_report(self, symbol: str, strategy: str, metrics: dict) -> str:
+        pass
+
+    @abc.abstractmethod
+    def generate_portfolio_risk_report(self, portfolio: list, risk_metrics: dict) -> str:
         pass
 
 class OllamaLLM(BaseLLM):
@@ -58,6 +61,21 @@ class OllamaLLM(BaseLLM):
             print(f"DEBUG: {error_msg}")
             return error_msg
 
+    def generate_portfolio_risk_report(self, portfolio: list, risk_metrics: dict) -> str:
+        prompt = self._build_portfolio_risk_prompt(portfolio, risk_metrics)
+        try:
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False
+            }
+            response = requests.post(self.api_url, json=payload, timeout=90)
+            response.raise_for_status()
+            result = response.json()
+            return result.get("response", "Error: No response field in Ollama output")
+        except Exception as e:
+            return f"Error generating portfolio risk report: {str(e)}"
+
     def _build_backtest_prompt(self, symbol: str, strategy: str, metrics: dict) -> str:
         return f"""
         你是一位资深的量化交易专家。请对股票 {symbol} 使用 {strategy} 策略的回测结果进行深度评价。
@@ -76,6 +94,48 @@ class OllamaLLM(BaseLLM):
         3. **优化建议**: 针对回测表现，提出可能的优化方向（如调整参数、增加过滤条件等）。
         
         请用中文回答，保持专业客观。
+        """
+
+    def _build_portfolio_risk_prompt(self, portfolio: list, risk_metrics: dict) -> str:
+        # 提取组合构成字符串
+        portfolio_str = ", ".join([f"{p['symbol']}({p.get('shares', 0)}股)" for p in portfolio])
+        
+        metrics = risk_metrics.get("metrics", {})
+        hist = metrics.get("historical", {})
+        perf = risk_metrics.get("performance", {})
+        corr = risk_metrics.get("correlation_matrix", {})
+        
+        # 简化相关性矩阵的展示，提取核心数据给 LLM
+        corr_str = json.dumps(corr, ensure_ascii=False)
+        
+        return f"""
+        你是一位极其严苛的机构级量化风控官。请根据以下个人投资组合的真实历史回测数据，用“无情且极其直白”的大白话，撰写一份专业的风控诊断及调仓药方报告。你的目标是打醒那些盲目自信的散户。
+        
+        【投资组合构成】
+        - 包含资产: {portfolio_str}
+        - 组合总价值: {risk_metrics.get('total_value', 0):.2f} 元
+        - 组合年化波动率: {risk_metrics.get('annual_volatility', 0)*100:.2f}%
+        
+        【机构核心绩效与回撤指标】
+        - 过去一年真实最大回撤幅度: {perf.get('max_drawdown_pct', 0)*100:.2f}% 
+        - 过去一年真实最大亏损金额: {perf.get('max_drawdown_amount', 0):.2f} 元
+        - 夏普比率 (Sharpe Ratio): {perf.get('sharpe_ratio', 0):.2f} (大于1算优秀，负数说明连无风险收益都不如)
+        - 索提诺比率 (Sortino Ratio): {perf.get('sortino_ratio', 0):.2f}
+        
+        【内部资产相关性矩阵】(数值越接近1代表同涨同跌，缺乏分散性)
+        {corr_str}
+        
+        【风险价值 (VaR) 尾部风险】
+        - 99% 置信度单日极限回撤预估 (VaR 99%): {hist.get('var_99', 0)*100:.2f}%
+        - 黑天鹅事件极端单日跌幅预估 (CVaR 99%): {hist.get('cvar_99', 0)*100:.2f}%
+        
+        【分析要求】
+        1. **“能不能拿得住” (最大回撤痛点分析)**：结合绝对亏损金额，直击灵魂地质问这套组合在最惨时跌掉的钱是否超出了普通人的心理承受极限。
+        2. **“这是不是瞎折腾” (夏普比率绩效点评)**：评价其夏普比率。如果极低，指出承担了高风险却没换来收益。
+        3. **“假分散还是真集中” (相关性雷达)**：根据皮尔逊相关性矩阵数据，揪出哪些股票是“穿同一条裤子”的高度相关标的，警告这不是真正的分散。
+        4. **【核心】粗暴直接的调仓药方**: 作为机构风控官，直接给出具体“手术级别”的对冲或调仓建议（如：削减某两只高相关性仓位，配置低相关性防守资产或保留现金）。
+
+        请用 Markdown 格式，语气务必专业、犀利、直击要害，字数控制在 500 字以内。
         """
 
     def _build_prompt(self, symbol: str, data: dict) -> str:
@@ -119,6 +179,16 @@ class ValidationLLM(BaseLLM):
         - 最大回撤：{metrics.get('max_drawdown_pct', 0):.2f}%
         收益表现{"理想" if metrics.get('total_return_pct', 0) > 0 else "欠佳"}，最大回撤控制在 {metrics.get('max_drawdown_pct', 0):.2f}%。
         建议：继续观察市场动态。
+        """
+
+    def generate_portfolio_risk_report(self, portfolio: list, risk_metrics: dict) -> str:
+        return f"""
+        【模拟AI投资组合风控报告】
+        评估对象包括：{len(portfolio)} 支股票
+        根据计算，该组合年化波动率为 {risk_metrics.get('annual_volatility', 0)*100:.2f}%。
+        99% VaR 指标预估每日极限亏损幅度约为 {risk_metrics.get('historical', {}).get('var_99', 0)*100:.2f}%。
+        
+        *系统级提示：请在本地 Olllama 服务启动，以获取完整而深度的真实风险解读。*
         """
 
 def get_llm_client(provider="ollama", model_name="qwen3:1.7b"):

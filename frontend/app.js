@@ -2,37 +2,47 @@ const API_BASE = "/api";
 let priceChart = null;
 
 async function loginUser(username, password, remember) {
-    const response = await fetch(`${API_BASE}/login`, {
+    const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: JSON.stringify({
+        body: new URLSearchParams({
             username: username,
             password: password
         })
     });
-    
+
     const data = await response.json();
-    
+
     if (!response.ok) {
-        throw new Error(data.detail || '登录失败');
+        let errorMessage = '登录失败';
+        if (data.detail) {
+            if (typeof data.detail === 'string') {
+                errorMessage = data.detail;
+            } else if (Array.isArray(data.detail)) {
+                errorMessage = data.detail.map(e => e.msg).join(', ');
+            } else {
+                errorMessage = JSON.stringify(data.detail);
+            }
+        }
+        throw new Error(errorMessage);
     }
-    
-    if (data.token) {
-        localStorage.setItem('access_token', data.token);
+
+    if (data.access_token) {
+        localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('user_info', JSON.stringify(data.user || {}));
         if (remember) {
             localStorage.setItem('remember_me', 'true');
         }
         return { success: true, data: data };
     }
-    
+
     return { success: false, message: '登录失败' };
 }
 
 async function registerUser(email, username, password) {
-    const response = await fetch(`${API_BASE}/register`, {
+    const response = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -44,30 +54,30 @@ async function registerUser(email, username, password) {
             full_name: username
         })
     });
-    
+
     const data = await response.json();
-    
+
     if (!response.ok) {
         throw new Error(data.detail || '注册失败');
     }
-    
+
     return { success: true, data: data };
 }
 
 async function requestPasswordReset(email) {
-    const response = await fetch(`${API_BASE}/auth/password-reset/request`, {
+    const response = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email: email })
     });
-    
+
     if (!response.ok) {
         const data = await response.json();
         throw new Error(data.detail || '请求失败');
     }
-    
+
     return { success: true };
 }
 
@@ -79,14 +89,14 @@ function logout() {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
-        }).catch(() => {});
+        }).catch(() => { });
     }
-    
+
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user_info');
     localStorage.removeItem('remember_me');
-    
+
     window.location.href = 'login.html';
 }
 
@@ -100,9 +110,9 @@ async function fetchWithAuth(url, options = {}) {
         ...options.headers,
         ...getAuthHeaders()
     };
-    
+
     const response = await fetch(url, { ...options, headers });
-    
+
     if (response.status === 401) {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
@@ -110,14 +120,14 @@ async function fetchWithAuth(url, options = {}) {
         window.location.href = 'login.html';
         throw new Error('认证已过期，请重新登录');
     }
-    
+
     return response;
 }
 
 function checkAuthStatus() {
     const accessToken = localStorage.getItem('access_token');
     const userInfo = localStorage.getItem('user_info');
-    
+
     const loginLink = document.getElementById('login-link');
     const registerLink = document.getElementById('register-link');
     const userInfoEl = document.getElementById('user-info');
@@ -125,12 +135,12 @@ function checkAuthStatus() {
     const userAvatar = document.getElementById('user-avatar');
     const userName = document.getElementById('user-name');
     const userRole = document.getElementById('user-role');
-    
+
     if (accessToken) {
         if (loginLink) loginLink.classList.add('hidden');
         if (registerLink) registerLink.classList.add('hidden');
         if (userInfoEl) userInfoEl.classList.remove('hidden');
-        
+
         if (userInfo) {
             try {
                 const user = JSON.parse(userInfo);
@@ -138,13 +148,13 @@ function checkAuthStatus() {
                 if (userAvatar) userAvatar.textContent = (user.username || user.email || 'U').charAt(0).toUpperCase();
                 if (userName) userName.textContent = user.username || '用户';
                 if (userRole) userRole.textContent = user.role || '投资者';
-            } catch (e) {}
+            } catch (e) { }
         }
     } else {
         if (loginLink) loginLink.classList.remove('hidden');
         if (registerLink) registerLink.classList.remove('hidden');
         if (userInfoEl) userInfoEl.classList.add('hidden');
-        
+
         if (userAvatar) userAvatar.textContent = '?';
         if (userName) userName.textContent = '未登录';
         if (userRole) userRole.textContent = '请先登录';
@@ -194,16 +204,16 @@ function updateProgress(progress, status) {
 
 document.addEventListener('DOMContentLoaded', () => {
     checkAuthStatus();
-    
+
     const path = window.location.pathname;
     if (path.includes('factors.html')) {
         initFactorsPage();
     } else if (path.includes('data.html')) {
         setTimeout(loadMonitoredStocks, 100);
     }
-    
+
     initFactorTabs();
-    
+
     const urlParams = new URLSearchParams(window.location.search);
     const symbolParam = urlParams.get('symbol');
     if (symbolParam) {
@@ -226,9 +236,12 @@ async function initFactorsPage() {
     const params = new URLSearchParams(window.location.search);
     const symbol = params.get('symbol');
     if (!symbol) {
-        alert("未发现股票代码");
-        window.location.href = 'index.html';
-        return;
+        // 默认显示贵州茅台
+        symbol = '600519';
+        // 更新 URL 但不刷新页面
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('symbol', symbol);
+        window.history.replaceState({}, '', newUrl);
     }
 
     const titleEl = document.getElementById('stock-title');
