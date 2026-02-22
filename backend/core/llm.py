@@ -69,12 +69,15 @@ class OllamaLLM(BaseLLM):
                 "prompt": prompt,
                 "stream": False
             }
-            response = requests.post(self.api_url, json=payload, timeout=90)
+            # 为了防止前端卡死，将风控诊断超时设为较短时间 (15s)
+            response = requests.post(self.api_url, json=payload, timeout=15)
             response.raise_for_status()
             result = response.json()
             return result.get("response", "Error: No response field in Ollama output")
+        except requests.exceptions.Timeout:
+            return "⚠️ **AI 通讯超时**\n本地大模型正在加载或负载过高，未能及时生成风控报告。但各项精确数学指标与全球资产雷达均已计算完毕，请参考上方数据面板。"
         except Exception as e:
-            return f"Error generating portfolio risk report: {str(e)}"
+            return f"⚠️ **AI 风控引擎暂时离线**: {str(e)}\n\n(但底层量化指标已完成计算并呈现在上方)"
 
     def _build_backtest_prompt(self, symbol: str, strategy: str, metrics: dict) -> str:
         return f"""
@@ -97,45 +100,39 @@ class OllamaLLM(BaseLLM):
         """
 
     def _build_portfolio_risk_prompt(self, portfolio: list, risk_metrics: dict) -> str:
-        # 提取组合构成字符串
-        portfolio_str = ", ".join([f"{p['symbol']}({p.get('shares', 0)}股)" for p in portfolio])
+        # 提取组合构成字符串，重点暴露法币与市场地缘属性
+        portfolio_str = ", ".join([f"{p['symbol']}({p.get('shares', 0)}股/市场:{p.get('market', 'CN')}/计价币种:{p.get('currency', 'CNY')})" for p in portfolio])
         
         metrics = risk_metrics.get("metrics", {})
         hist = metrics.get("historical", {})
         perf = risk_metrics.get("performance", {})
         corr = risk_metrics.get("correlation_matrix", {})
         
-        # 简化相关性矩阵的展示，提取核心数据给 LLM
         corr_str = json.dumps(corr, ensure_ascii=False)
         
         return f"""
-        你是一位极其严苛的机构级量化风控官。请根据以下个人投资组合的真实历史回测数据，用“无情且极其直白”的大白话，撰写一份专业的风控诊断及调仓药方报告。你的目标是打醒那些盲目自信的散户。
+        你是一位极其严苛的机构级全球量化风控官。请根据以下个人投资组合的真实历史回测数据，用“无情且极其直白”的大白话，撰写一份专业的风控诊断及调仓药方报告。你的目标是打醒那些盲目自信的散户。
         
-        【投资组合构成】
-        - 包含资产: {portfolio_str}
-        - 组合总价值: {risk_metrics.get('total_value', 0):.2f} 元
-        - 组合年化波动率: {risk_metrics.get('annual_volatility', 0)*100:.2f}%
+        【全球投资组合构成】
+        - 包含资产与底牌地界: {portfolio_str}
+        - 组合统合折算人民币总价值 (CNY): {risk_metrics.get('total_value', 0):.2f} 元
+        - 组合年化综合波动率: {risk_metrics.get('annual_volatility', 0)*100:.2f}%
         
-        【机构核心绩效与回撤指标】
+        【机构核心绩效与回撤指标 (所有海外资产均已被按日汇率强制穿透折算为统一的人民币净值)】
         - 过去一年真实最大回撤幅度: {perf.get('max_drawdown_pct', 0)*100:.2f}% 
-        - 过去一年真实最大亏损金额: {perf.get('max_drawdown_amount', 0):.2f} 元
-        - 夏普比率 (Sharpe Ratio): {perf.get('sharpe_ratio', 0):.2f} (大于1算优秀，负数说明连无风险收益都不如)
-        - 索提诺比率 (Sortino Ratio): {perf.get('sortino_ratio', 0):.2f}
+        - 过去一年真实最大亏损金额: {perf.get('max_drawdown_amount', 0):.2f} RMB
+        - 夏普比率 (Sharpe Ratio): {perf.get('sharpe_ratio', 0):.2f} (大于1优秀，负数说明不如存银行)
         
-        【内部资产相关性矩阵】(数值越接近1代表同涨同跌，缺乏分散性)
+        【跨国别/跨币系相关性矩阵】(数值接近1代表不但同涨同跌，且连汇率曝险都一样)
         {corr_str}
         
-        【风险价值 (VaR) 尾部风险】
-        - 99% 置信度单日极限回撤预估 (VaR 99%): {hist.get('var_99', 0)*100:.2f}%
-        - 黑天鹅事件极端单日跌幅预估 (CVaR 99%): {hist.get('cvar_99', 0)*100:.2f}%
-        
         【分析要求】
-        1. **“能不能拿得住” (最大回撤痛点分析)**：结合绝对亏损金额，直击灵魂地质问这套组合在最惨时跌掉的钱是否超出了普通人的心理承受极限。
-        2. **“这是不是瞎折腾” (夏普比率绩效点评)**：评价其夏普比率。如果极低，指出承担了高风险却没换来收益。
-        3. **“假分散还是真集中” (相关性雷达)**：根据皮尔逊相关性矩阵数据，揪出哪些股票是“穿同一条裤子”的高度相关标的，警告这不是真正的分散。
-        4. **【核心】粗暴直接的调仓药方**: 作为机构风控官，直接给出具体“手术级别”的对冲或调仓建议（如：削减某两只高相关性仓位，配置低相关性防守资产或保留现金）。
+        1. **极限拷问回撤**：指出绝对回撤金额，质问投资者在面临这种跨国/跨市场风暴时能否拿得住。
+        2. **性价比与汇率风险批判**：不要被表面赚钱蒙蔽，由于所有资产已折算成人民币净值，请批判夏普比率。重点批评可能存在的“单边押注美元”等外汇汇率波动敞口过分集中的行为。
+        3. **假分散的真面目**：利用中美大国博弈或不同周期的视角，根据皮尔逊相关性揪出看似买在海外，其实还是一损俱损的同质化标的。
+        4. **【核心】调仓硬命令**: 直下药方。比如：“立刻大幅削减30%的集中度过高的人民币或美元资产，补充不同政治经济周期的市场标的或者加密数字防守资产。”
 
-        请用 Markdown 格式，语气务必专业、犀利、直击要害，字数控制在 500 字以内。
+        请用 Markdown 格式，语气务必专业、犀利、像个恨铁不成钢的教官，绝不使用机械排比过渡词，字数控制在 500 字以内。
         """
 
     def _build_prompt(self, symbol: str, data: dict) -> str:

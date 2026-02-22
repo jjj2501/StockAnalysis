@@ -196,6 +196,7 @@ async def get_factors(
     """
     try:
         from backend.core.data import DataFetcher
+        import math
         fetcher = DataFetcher()
         
         categories = cat.split(',') if cat else None
@@ -203,6 +204,19 @@ async def get_factors(
         
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
+        
+        # 清理 NaN/Inf 值，防止 JSON 序列化失败
+        def sanitize(obj):
+            if isinstance(obj, float):
+                if math.isnan(obj) or math.isinf(obj):
+                    return 0.0
+                return round(obj, 4)
+            elif isinstance(obj, dict):
+                return {k: sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [sanitize(item) for item in obj]
+            return obj
+        result = sanitize(result)
         
         # 记录用户活动（如果有用户）
         if user and background_tasks:
@@ -380,8 +394,11 @@ from typing import List
 
 class PortfolioItem(BaseModel):
     symbol: str
-    shares: int
+    shares: float
     price: float
+    market: str = "CN"
+    asset_type: str = "STOCK"
+    currency: str = "CNY"
 
 class PortfolioRiskRequest(BaseModel):
     portfolio: List[PortfolioItem]

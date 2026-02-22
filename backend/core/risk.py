@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Tuple
 import datetime
 
 from backend.core.data import DataFetcher
+from backend.core.fx import FXManager
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ class RiskManager:
     
     def __init__(self):
         self.fetcher = DataFetcher()
+        self.fx_manager = FXManager()
 
     def calculate_portfolio_risk(self, portfolio: List[Dict[str, Any]], days_history: int = 252) -> Dict[str, Any]:
         """
@@ -24,39 +26,55 @@ class RiskManager:
             return {"error": "投资组合为空"}
             
         try:
-            # 1. 计算总市值与股票初始权重
-            total_value = sum(p["shares"] * p["price"] for p in portfolio)
-            if total_value == 0:
+            # 获取过去的日期范围
+            end_date_str = datetime.datetime.now().strftime("%Y%m%d")
+            start_date_str = (datetime.datetime.now() - datetime.timedelta(days=days_history + 100)).strftime("%Y%m%d")
+
+            # 1. 计算折算成基础法币(CNY)的总市值与股票初始权重
+            total_value_cny = 0.0
+            portfolio_cny = []
+            for p in portfolio:
+                currency = p.get("currency", "CNY").upper()
+                # 取出这段日期的汇率折线
+                fx_series = self.fx_manager.get_fx_rate_series(currency, "CNY", start_date_str, end_date_str)
+                # 最新一天的汇率用于计算当前总价值
+                latest_fx = fx_series.iloc[-1] if not fx_series.empty else 1.0
+                asset_val_cny = p["shares"] * p["price"] * latest_fx
+                total_value_cny += asset_val_cny
+                portfolio_cny.append({"symbol": p["symbol"], "val_cny": asset_val_cny, "fx_series": fx_series})
+                
+            if total_value_cny == 0:
                 return {"error": "投资组合总市值为0"}
 
-            weights = {p["symbol"]: (p["shares"] * p["price"]) / total_value for p in portfolio}
+            weights = {p["symbol"]: p["val_cny"] / total_value_cny for p in portfolio_cny}
             
-            # 2. 获取历史数据
-            end_date_str = datetime.datetime.now().strftime("%Y%m%d")
-            # 考虑非交易日，多取一些日历天数以保证能拿到足够的交易日数据
-            start_date_str = (datetime.datetime.now() - datetime.timedelta(days=days_history + 100)).strftime("%Y%m%d")
-            
+            # 2. 获取历史数据并穿透汇率
             returns_dict = {}
-            for p in portfolio:
+            for i, p in enumerate(portfolio):
                 sym = p["symbol"]
-                df = self.fetcher.get_stock_data(sym, start_date=start_date_str, end_date=end_date_str)
+                market = p.get("market", "CN").upper()
+                df = self.fetcher.get_stock_data(sym, start_date=start_date_str, end_date=end_date_str, market=market)
                 if df.empty:
-                    logger.warning(f"无法获取股票 {sym} 的历史数据用于风控计算")
-                    # 假定该股票的收益率为0
+                    logger.warning(f"无法获取资产 {market}-{sym} 的历史数据用于风控计算")
                     continue
                 
-                # 计算每日收益率 (使用对数或简单收益率，这里使用简单收益率 pct_change)
-                df['daily_return'] = df['close'].pct_change()
-                # 剔除第一个 NaN，或者直接用 tail 保证长度一致
-                df = df.dropna()
-                # 只取最近的 days_history 天
-                df = df.tail(days_history)
-                # 将日期作为 index 生成 pd.Series
+                # 设置日期索引以进行对齐
                 df.set_index('date', inplace=True)
+                
+                # 汇率穿透：将每天的收盘价转换为 CNY 现价
+                fx_series = portfolio_cny[i]["fx_series"]
+                # index 对齐乘法
+                df['close_cny'] = df['close'] * fx_series
+                
+                # 计算折算人民币后的每日真实收益率
+                df['daily_return'] = df['close_cny'].pct_change()
+                df = df.dropna()
+                df = df.tail(days_history)
+                
                 returns_dict[sym] = df['daily_return']
                 
             if not returns_dict:
-                return {"error": "无法获取组合内任何股票的历史数据"}
+                return {"error": "无法获取组合内任何有效资产的历史数据"}
 
             # 将有数据的不同股票合成一个 DataFrame，日期对齐
             returns_df = pd.DataFrame(returns_dict).fillna(0) # 某只股票如果在某天停牌没有数据，假设收益为0
@@ -87,7 +105,7 @@ class RiskManager:
             rolling_max = cumulative_returns.cummax()
             drawdowns = (cumulative_returns - rolling_max) / rolling_max
             max_drawdown_pct = drawdowns.min()
-            max_drawdown_amount = max_drawdown_pct * total_value
+            max_drawdown_amount = max_drawdown_pct * total_value_cny
             
             # 夏普与索提诺比率 (假设无风险利率2%)
             risk_free_rate = 0.02
@@ -132,7 +150,7 @@ class RiskManager:
 
             return {
                 "status": "success",
-                "total_value": total_value,
+                "total_value": total_value_cny,
                 "annual_volatility": float(annual_volatility),
                 "daily_volatility": float(daily_volatility),
                 "metrics": {
@@ -154,6 +172,14 @@ class RiskManager:
                     "sortino_ratio": float(sortino_ratio) if not pd.isna(sortino_ratio) else 0.0
                 },
                 "correlation_matrix": correlation_matrix,
+                # 返回资产的人民币价值分解和权重
+                "assets_breakdown": [
+                    {
+                        "symbol": p["symbol"],
+                        "val_cny": float(p["val_cny"]),
+                        "weight": float(weights[p["symbol"]])
+                    } for p in portfolio_cny
+                ],
                 # 可以返回一部分收益序列供前端如果需要绘制时序图
                 "recent_returns": portfolio_daily_returns.tail(30).round(4).tolist(),
                 "histogram": histogram_data

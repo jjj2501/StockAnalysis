@@ -1,4 +1,5 @@
 import akshare as ak
+import yfinance as yf
 import os
 import pandas as pd
 import numpy as np
@@ -32,149 +33,223 @@ class DataFetcher:
         logger.info(f"数据缓存目录: {self.cache_dir}")
     
     def _clear_proxy(self):
-        """临时清除系统代理配置，防止 akshare 连接失败"""
-        proxy_vars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']
+        """临时清除系统代理配置，彻底防止 akshare 连接失败"""
+        proxy_vars = ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'all_proxy', 'ALL_PROXY']
         for var in proxy_vars:
             if var in os.environ:
                 del os.environ[var]
+            # 强制清空值
+            os.environ[var] = ''
+            
+        # 强制 requests 不走任何代理
+        os.environ['NO_PROXY'] = '*'
+        os.environ['no_proxy'] = '*'
     
-    def _get_cache_path(self, symbol: str) -> Path:
+    def _get_cache_path(self, symbol: str, market: str = "CN") -> Path:
         """获取指定股票代码的缓存文件路径"""
-        return self.cache_dir / f"{symbol}.parquet"
+        return self.cache_dir / f"{market}_{symbol}.parquet"
     
-    def _load_cache(self, symbol: str) -> Optional[pd.DataFrame]:
+    def _load_cache(self, symbol: str, market: str = "CN") -> Optional[pd.DataFrame]:
         """
         从本地加载缓存数据
-        :param symbol: 股票代码
+        :param symbol: 代码
+        :param market: 市场
         :return: 缓存的 DataFrame，如不存在则返回 None
         """
-        cache_path = self._get_cache_path(symbol)
-        if cache_path.exists():
-            try:
-                df = pd.read_parquet(cache_path)
-                df['date'] = pd.to_datetime(df['date'])
-                logger.info(f"从缓存加载 {symbol}, 共 {len(df)} 条记录")
-                return df
-            except Exception as e:
-                logger.warning(f"读取缓存文件失败 {cache_path}: {e}")
-                return None
+        cache_path = self._get_cache_path(symbol, market)
+        # 兼容旧格式缓存文件（不含 market 前缀，如 600519.parquet）
+        legacy_cache_path = self.cache_dir / f"{symbol}.parquet"
+        
+        # 优先加载新格式缓存
+        for path in [cache_path, legacy_cache_path]:
+            if path.exists():
+                try:
+                    df = pd.read_parquet(path)
+                    df['date'] = pd.to_datetime(df['date'])
+                    logger.info(f"从缓存加载 {market}-{symbol} ({path.name}), 共 {len(df)} 条记录")
+                    return df
+                except Exception as e:
+                    logger.warning(f"读取缓存文件失败 {path}: {e}")
+                    continue
         return None
     
-    def _save_cache(self, symbol: str, df: pd.DataFrame) -> bool:
+    def _save_cache(self, symbol: str, df: pd.DataFrame, market: str = "CN") -> bool:
         """
         保存数据到本地缓存
-        :param symbol: 股票代码
+        :param symbol: 代码
         :param df: 要保存的 DataFrame
+        :param market: 市场
         :return: 是否保存成功
         """
         if df.empty:
             return False
-        cache_path = self._get_cache_path(symbol)
+        cache_path = self._get_cache_path(symbol, market)
         try:
             df.to_parquet(cache_path, index=False)
-            logger.info(f"已缓存 {symbol} 数据到 {cache_path}, 共 {len(df)} 条记录")
+            logger.info(f"已缓存 {market}-{symbol} 数据到 {cache_path}, 共 {len(df)} 条记录")
             return True
         except Exception as e:
             logger.error(f"保存缓存失败 {cache_path}: {e}")
             return False
     
-    def _fetch_from_remote(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """
-        从远程 API (AkShare) 获取数据
-        :param symbol: 股票代码
-        :param start_date: 开始日期 YYYYMMDD
-        :param end_date: 结束日期 YYYYMMDD
-        :return: 清洗后的 DataFrame
-        """
+    def _fetch_from_remote(self, symbol: str, start_date: str, end_date: str, market: str = "CN") -> pd.DataFrame:
+        """从远程 API 获取数据 (按市场路由策略)"""
+        if market == "CN":
+            return self._fetch_from_akshare_a(symbol, start_date, end_date)
+        elif market in ["US", "HK", "CRYPTO", "FOREX", "INDEX"]:
+            return self._fetch_from_yfinance(symbol, start_date, end_date, market)
+        elif market == "CASH":
+            return self._fetch_mock_cash(start_date, end_date)
+        else:
+            logger.error(f"不支持的市场类型: {market}")
+            return pd.DataFrame()
+
+    def _fetch_from_akshare_a(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         try:
-            # akshare stock_zh_a_hist 接口获取个股历史数据
-            # adjust="qfq" 代表前复权
             self._clear_proxy()
-            df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_date, end_date=end_date, adjust="qfq")
+            # 使用线程池实现超时控制，防止 akshare 网络卡死
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    ak.stock_zh_a_hist,
+                    symbol=symbol, period="daily",
+                    start_date=start_date, end_date=end_date, adjust="qfq"
+                )
+                try:
+                    df = future.result(timeout=15)  # 15 秒超时
+                except Exception as timeout_err:
+                    logger.warning(f"AkShare 请求超时（15s）{symbol}: {timeout_err}")
+                    return pd.DataFrame()
+            
             if df is None or df.empty:
                 logger.warning(f"远程无数据: {symbol} ({start_date} - {end_date})")
                 return pd.DataFrame()
             
-            # 重命名列以方便使用
             df = df.rename(columns={
-                "日期": "date",
-                "开盘": "open",
-                "收盘": "close",
-                "最高": "high",
-                "最低": "low",
-                "成交量": "volume",
-                "成交额": "amount",
-                "振幅": "amplitude",
-                "涨跌幅": "pct_chg",
-                "涨跌额": "change",
-                "换手率": "turnover"
+                "日期": "date", "开盘": "open", "收盘": "close",
+                "最高": "high", "最低": "low", "成交量": "volume",
+                "成交额": "amount", "振幅": "amplitude",
+                "涨跌幅": "pct_chg", "涨跌额": "change", "换手率": "turnover"
             })
             
-            # 确保日期格式
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date')
-            logger.info(f"从远程获取 {symbol} 数据: {start_date} - {end_date}, 共 {len(df)} 条记录")
+            logger.info(f"从 AkShare 获取 {symbol} 数据: {start_date} - {end_date}, 共 {len(df)} 条记录")
             return df
         except Exception as e:
-            logger.error(f"远程获取数据失败 {symbol}: {e}")
+            logger.error(f"AkShare 获取数据失败 {symbol}: {e}")
             return pd.DataFrame()
+
+    def _fetch_from_yfinance(self, symbol: str, start_date: str, end_date: str, market: str) -> pd.DataFrame:
+        try:
+            start_dt = pd.to_datetime(start_date).strftime('%Y-%m-%d')
+            end_dt = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            yf_symbol = symbol
+            if market == "HK" and not symbol.endswith(".HK"):
+                yf_symbol = f"{symbol}.HK"
+                
+            logger.info(f"从 yfinance 获取 {yf_symbol} ({market}): {start_dt} - {end_dt}")
+            self._clear_proxy()
+            df = yf.download(yf_symbol, start=start_dt, end=end_dt, progress=False)
+            
+            if df is None or df.empty:
+                logger.warning(f"yfinance 无数据: {yf_symbol}")
+                return pd.DataFrame()
+            
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            
+            df = df.reset_index()
+            # 兼容列名
+            rename_map = {"Date": "date", "Datetime": "date", "Open": "open", "Close": "close", "High": "high", "Low": "low", "Volume": "volume", "Adj Close": "adj_close"}
+            df = df.rename(columns=rename_map)
+            df.columns = [c.lower() for c in df.columns]
+            
+            if 'adj_close' in df.columns:
+                df['close'] = df['adj_close']
+            
+            df['amount'] = df['close'] * df['volume']
+            df['amplitude'] = (df['high'] - df['low']) / df['open'].replace(0, pd.NA).fillna(1) * 100
+            df['change'] = df['close'].diff()
+            df['pct_chg'] = df['close'].pct_change() * 100
+            df['turnover'] = 0.0
+            
+            df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None)
+            df = df.sort_values('date')
+            df.fillna(method='ffill', inplace=True)
+            return df
+        except Exception as e:
+            logger.error(f"yfinance 获取数据失败 {symbol} ({market}): {e}")
+            return pd.DataFrame()
+
+    def _fetch_mock_cash(self, start_date: str, end_date: str) -> pd.DataFrame:
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+        dates = pd.date_range(start=start_dt, end=end_dt, freq='B')
+        df = pd.DataFrame({'date': dates})
+        df['open'] = 1.0
+        df['close'] = 1.0
+        df['high'] = 1.0
+        df['low'] = 1.0
+        df['volume'] = 0.0
+        df['amount'] = 0.0
+        df['amplitude'] = 0.0
+        df['change'] = 0.0
+        df['pct_chg'] = 0.0
+        df['turnover'] = 0.0
+        return df
         
-    def get_stock_data(self, symbol: str, start_date: str = "20200101", end_date: str = "20251231") -> pd.DataFrame:
+    def get_stock_data(self, symbol: str, start_date: str = "20200101", end_date: str = "20251231", market: str = "CN") -> pd.DataFrame:
         """
-        获取A股历史数据（带本地缓存和增量更新）
-        :param symbol: 股票代码, 例如 "600519"
-        :param start_date: 开始日期 YYYYMMDD
-        :param end_date: 结束日期 YYYYMMDD
-        :return: 清洗后的DataFrame
+        获取历史数据（带本地缓存和增量更新，支持多市场路由）
+        :param symbol: 资产代码
+        :param market: 市场标识 ("CN", "US", "HK", "CRYPTO", "CASH")
         """
-        # 1. 尝试加载本地缓存
-        cached_df = self._load_cache(symbol)
+        cached_df = self._load_cache(symbol, market)
         
         requested_start = pd.to_datetime(start_date, format='%Y%m%d')
         requested_end = pd.to_datetime(end_date, format='%Y%m%d')
 
         if cached_df is not None and not cached_df.empty:
-            # 2. 有缓存，检查是否需要更新
             cache_min_date = cached_df['date'].min()
             cache_max_date = cached_df['date'].max()
             
-            # 如果缓存能覆盖请求范围，直接返回
             if cache_min_date <= requested_start and cache_max_date >= requested_end:
-                logger.info(f"{symbol} 缓存数据已覆盖请求范围 (从 {cache_min_date.strftime('%Y-%m-%d')} 到 {cache_max_date.strftime('%Y-%m-%d')})")
+                logger.info(f"{market}-{symbol} 缓存数据已覆盖请求范围")
                 return cached_df[(cached_df['date'] >= requested_start) & (cached_df['date'] <= requested_end)]
 
-            # 如果只有结束时间落后，进行增量更新
             if cache_min_date <= requested_start and cache_max_date < requested_end:
                 incremental_start = (cache_max_date + pd.Timedelta(days=1)).strftime('%Y%m%d')
-                logger.info(f"{symbol} 增量更新结束日期: {incremental_start} - {end_date}")
-                new_df = self._fetch_from_remote(symbol, incremental_start, end_date)
+                logger.info(f"{market}-{symbol} 增量更新结束日期: {incremental_start} - {end_date}")
+                new_df = self._fetch_from_remote(symbol, incremental_start, end_date, market)
                 
                 if not new_df.empty:
                     combined_df = pd.concat([cached_df, new_df], ignore_index=True)
                     combined_df = combined_df.drop_duplicates(subset=['date'], keep='last').sort_values('date').reset_index(drop=True)
-                    self._save_cache(symbol, combined_df)
+                    self._save_cache(symbol, combined_df, market)
                     return combined_df[(combined_df['date'] >= requested_start) & (combined_df['date'] <= requested_end)]
+                else:
+                    # 远程获取失败时，使用已有缓存数据（可能不完整但比空结果好）
+                    logger.warning(f"{market}-{symbol} 增量更新失败，使用已有缓存数据")
+                    return cached_df[(cached_df['date'] >= requested_start) & (cached_df['date'] <= requested_end)]
             
-            # 简化处理：如果起始时间也早于缓存，则重新拉取全部范围 (或者以后可以实现双向增量)
-            logger.info(f"{symbol} 缓存范围不足 (缓存起始 {cache_min_date.strftime('%Y-%m-%d')})，重新拉取整体数据")
-            df = self._fetch_from_remote(symbol, start_date, end_date)
+            logger.info(f"{market}-{symbol} 缓存范围不足，重新拉取整体数据")
+            df = self._fetch_from_remote(symbol, start_date, end_date, market)
             if not df.empty:
-                # 合并缓存以防丢失其他部分
                 combined_df = pd.concat([cached_df, df], ignore_index=True)
                 combined_df = combined_df.drop_duplicates(subset=['date'], keep='last').sort_values('date').reset_index(drop=True)
-                self._save_cache(symbol, combined_df)
+                self._save_cache(symbol, combined_df, market)
                 return combined_df[(combined_df['date'] >= requested_start) & (combined_df['date'] <= requested_end)]
             else:
                 return cached_df[(cached_df['date'] >= requested_start) & (cached_df['date'] <= requested_end)]
         else:
-            # 4. 无缓存，下载全部数据
-            logger.info(f"{symbol} 无本地缓存，从远程下载数据")
-            df = self._fetch_from_remote(symbol, start_date, end_date)
+            logger.info(f"{market}-{symbol} 无本地缓存，从远程下载数据")
+            df = self._fetch_from_remote(symbol, start_date, end_date, market)
             if not df.empty:
-                self._save_cache(symbol, df)
+                self._save_cache(symbol, df, market)
             return df
 
-    def get_batch_stock_data(self, symbols: List[str], start_date: str = "20200101", end_date: str = "20251231") -> Dict[str, pd.DataFrame]:
+    def get_batch_stock_data(self, symbols: List[str], start_date: str = "20200101", end_date: str = "20251231", market: str = "CN") -> Dict[str, pd.DataFrame]:
         """
         并发获取多只股票数据 (性能优化)
         """
@@ -307,18 +382,20 @@ class DataFetcher:
         """
         try:
             # 默认类别
-            all_cats = ['technical', 'fundamental', 'sentiment', 'northbound']
+            all_cats = ['technical', 'fundamental', 'sentiment', 'northbound', 'news']
             target_cats = categories if categories else all_cats
             
             # 使用列表保存需要执行的任务
             tasks = []
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=6) as executor:
                 if 'technical' in target_cats or 'sentiment' in target_cats:
                     tasks.append(executor.submit(self._fetch_tech_and_sentiment, symbol))
                 if 'fundamental' in target_cats:
                     tasks.append(executor.submit(self._fetch_fundamental, symbol))
                 if 'northbound' in target_cats:
                     tasks.append(executor.submit(self._fetch_northbound, symbol))
+                if 'news' in target_cats:
+                    tasks.append(executor.submit(self._fetch_news, symbol))
 
             results = {}
             for future in as_completed(tasks):
@@ -332,7 +409,8 @@ class DataFetcher:
                 "technical": results.get("technical", {}),
                 "sentiment": results.get("sentiment", {}),
                 "fundamental": results.get("fundamental", {}),
-                "northbound": results.get("northbound", {})
+                "northbound": results.get("northbound", {}),
+                "news": results.get("news", {})
             }
             
             # 如果是从技术面任务获取的日期，则使用真实数据日期
@@ -378,37 +456,190 @@ class DataFetcher:
             return {}
 
     def _fetch_fundamental(self, symbol: str) -> dict:
-        """获取基本面与成长因子 (优化: 优先使用个股实时数据)"""
+        """获取基本面因子（使用个股信息接口获取基础数据）"""
         try:
-            # 尝试使用个股实时行情接口 (通常比全量快)
             self._clear_proxy()
-            spot_df = ak.stock_zh_a_spot_em()
-            stock_spot = spot_df[spot_df['代码'] == symbol]
-            if not stock_spot.empty:
-                s = stock_spot.iloc[0]
-                return {"fundamental": {
-                    "PE": {"value": float(s['市盈率-动态']), "signal": "低估" if 0 < s['市盈率-动态'] < 15 else "高估" if s['市盈率-动态'] > 50 else "合理"},
-                    "PB": {"value": float(s['市净率']), "signal": "破净" if s['市净率'] < 1 else "合理"},
-                    "MarketCap": {"value": float(s['总市值'] / 1e8), "unit": "亿", "signal": "大盘股" if s['总市值'] > 1e11 else "小盘股"},
-                    "ROE": {"value": 15.0, "unit": "%", "signal": "一般"} # ROE 需财报接口，暂时固定
-                }}
-            return {}
+            # 使用超时控制获取个股基础信息
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(ak.stock_individual_info_em, symbol=symbol)
+                try:
+                    info_df = future.result(timeout=10)
+                except Exception as timeout_err:
+                    logger.warning(f"基本面数据请求超时（10s）{symbol}: {timeout_err}")
+                    return {}
+            
+            if info_df is None or info_df.empty:
+                logger.warning(f"基本面数据为空: {symbol}")
+                return {}
+            
+            # 转为字典
+            info_dict = dict(zip(info_df.iloc[:, 0], info_df.iloc[:, 1]))
+            logger.info(f"基本面字段: {list(info_dict.keys())}")
+            
+            # 提取可用指标
+            market_cap_raw = self._safe_float(info_dict, ['总市值'], 0)
+            market_cap = market_cap_raw / 1e8 if market_cap_raw > 1e6 else market_cap_raw
+            flow_cap_raw = self._safe_float(info_dict, ['流通市值'], 0)
+            flow_cap = flow_cap_raw / 1e8 if flow_cap_raw > 1e6 else flow_cap_raw
+            latest_price = self._safe_float(info_dict, ['最新'], 0)
+            total_shares = self._safe_float(info_dict, ['总股本'], 0)
+            
+            # 从最新价和总股本反推简易估值（总市值/净利润近似，此处仅提供市值数据）
+            return {"fundamental": {
+                "PE": {"value": 0, "signal": "暂无数据"},  # PE 需要净利润数据，当前接口无法提供
+                "PB": {"value": 0, "signal": "暂无数据"},  # PB 需要净资产数据
+                "MarketCap": {"value": round(market_cap, 2), "unit": "亿", "signal": "大盘股" if market_cap_raw > 1e11 else "小盘股"},
+                "FlowCap": {"value": round(flow_cap, 2), "unit": "亿", "signal": ""},
+                "LatestPrice": {"value": latest_price, "unit": "元", "signal": ""},
+                "Industry": {"value": str(info_dict.get('行业', '未知')), "signal": ""}
+            }}
         except Exception as e:
             logger.warning(f"获取基本面数据失败: {e}")
             return {}
 
     def _fetch_northbound(self, symbol: str) -> dict:
-        """获取北上资金因子"""
+        """获取北上资金因子（自动适配列名变更）"""
         try:
             self._clear_proxy()
-            hsgt_df = ak.stock_hsgt_individual_em(symbol=symbol)
-            if not hsgt_df.empty:
-                latest_hsgt = hsgt_df.iloc[0]
-                return {"northbound": {
-                    "HoldingRatio": {"value": float(latest_hsgt['持股比例']), "unit": "%", "signal": "高仓位" if latest_hsgt['持股比例'] > 5 else "低仓位"},
-                    "NetBuy": {"value": float(latest_hsgt['当日增持市值'] / 1e4), "unit": "万", "signal": "连续买入" if latest_hsgt['当日增持市值'] > 0 else "资金流出"}
-                }}
-            return {}
+            # 使用线程池超时控制
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(ak.stock_hsgt_individual_em, symbol=symbol)
+                try:
+                    hsgt_df = future.result(timeout=20)  # 20 秒超时
+                except Exception as timeout_err:
+                    logger.warning(f"北上资金数据请求超时（20s）{symbol}: {timeout_err}")
+                    return {}
+            
+            if hsgt_df is None or hsgt_df.empty:
+                logger.warning(f"北上资金数据为空: {symbol}")
+                return {}
+            
+            # 记录实际列名（便于调试 akshare 版本变更）
+            logger.info(f"北上资金数据列名: {list(hsgt_df.columns)}")
+            latest = hsgt_df.iloc[0]
+            
+            # 容错列名匹配：适配不同 akshare 版本（基于实际日志确认的列名）
+            holding_ratio = self._safe_col_float(latest, ['持股数量占A股百分比', '持股比例', '持股比例(%)', '比例', '占比'], 0)
+            net_buy = self._safe_col_float(latest, ['今日增持资金', '当日增持市值', '当日增持估计净买额', '增持市值', '净买额'], 0)
+            
+            return {"northbound": {
+                "HoldingRatio": {"value": holding_ratio, "unit": "%", "signal": "高仓位" if holding_ratio > 5 else "低仓位"},
+                "NetBuy": {"value": round(net_buy / 1e4, 2) if abs(net_buy) > 1e4 else net_buy, "unit": "万", "signal": "连续买入" if net_buy > 0 else "资金流出"}
+            }}
         except Exception as e:
             logger.warning(f"获取北上资金数据失败: {e}")
             return {}
+
+    def _fetch_news(self, symbol: str) -> dict:
+        """获取个股新闻因子（最新 10 条新闻 + 情感摘要）"""
+        try:
+            self._clear_proxy()
+            # 使用超时控制获取个股新闻
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(ak.stock_news_em, symbol=symbol)
+                try:
+                    news_df = future.result(timeout=15)  # 15 秒超时
+                except Exception as timeout_err:
+                    logger.warning(f"新闻数据请求超时（15s）{symbol}: {timeout_err}")
+                    return {}
+            
+            if news_df is None or news_df.empty:
+                logger.warning(f"新闻数据为空: {symbol}")
+                return {}
+            
+            # 记录实际列名（便于调试 akshare 版本变更）
+            logger.info(f"新闻数据列名: {list(news_df.columns)}")
+            
+            # 取最新 10 条新闻
+            news_list = []
+            for _, row in news_df.head(10).iterrows():
+                # 容错列名（适配不同 akshare 版本）
+                title = ''
+                for col in ['新闻标题', '标题', 'title']:
+                    if col in row.index and row[col]:
+                        title = str(row[col])
+                        break
+                
+                pub_time = ''
+                for col in ['发布时间', '时间', '日期', 'datetime', 'date']:
+                    if col in row.index and row[col]:
+                        pub_time = str(row[col])
+                        break
+                
+                source = ''
+                for col in ['文章来源', '来源', 'source']:
+                    if col in row.index and row[col]:
+                        source = str(row[col])
+                        break
+                
+                url = ''
+                for col in ['新闻链接', '链接', 'url', 'link']:
+                    if col in row.index and row[col]:
+                        url = str(row[col])
+                        break
+                
+                if title:  # 只添加有标题的新闻
+                    news_list.append({
+                        "title": title,
+                        "time": pub_time,
+                        "source": source,
+                        "url": url
+                    })
+            
+            # 简单情感分析：基于标题关键词统计
+            positive_words = ['涨', '突破', '创新高', '大涨', '增长', '利好', '超预期', '强势', '反弹', '上涨', '买入', '看多']
+            negative_words = ['跌', '下跌', '大跌', '暴跌', '下滑', '利空', '风险', '警告', '发行', '清仓', '看空', '减持']
+            
+            pos_count = 0
+            neg_count = 0
+            for item in news_list:
+                t = item['title']
+                pos_count += sum(1 for w in positive_words if w in t)
+                neg_count += sum(1 for w in negative_words if w in t)
+            
+            total = pos_count + neg_count
+            if total > 0:
+                sentiment_score = round((pos_count - neg_count) / total * 100, 1)
+            else:
+                sentiment_score = 0
+            
+            if sentiment_score > 20:
+                sentiment_signal = "偏多"
+            elif sentiment_score < -20:
+                sentiment_signal = "偏空"
+            else:
+                sentiment_signal = "中性"
+            
+            logger.info(f"新闻因子: {len(news_list)} 条新闻, 情感分={sentiment_score}, 信号={sentiment_signal}")
+            
+            return {"news": {
+                "items": news_list,
+                "sentiment_score": sentiment_score,
+                "sentiment_signal": sentiment_signal,
+                "count": len(news_list)
+            }}
+        except Exception as e:
+            logger.warning(f"获取新闻数据失败: {e}")
+            return {}
+
+    @staticmethod
+    def _safe_float(data: dict, keys: list, default: float = 0) -> float:
+        """从字典中安全提取浮点数值，尝试多个候选键名"""
+        for key in keys:
+            if key in data:
+                try:
+                    return float(data[key])
+                except (ValueError, TypeError):
+                    continue
+        return default
+
+    @staticmethod
+    def _safe_col_float(row, keys: list, default: float = 0) -> float:
+        """从 DataFrame 行中安全提取浮点数值，尝试多个候选列名"""
+        for key in keys:
+            if key in row.index:
+                try:
+                    return float(row[key])
+                except (ValueError, TypeError):
+                    continue
+        return default

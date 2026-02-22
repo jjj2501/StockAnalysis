@@ -1,11 +1,21 @@
 <script>
-    let { children, title = "", class: className = "" } = $props();
+    let {
+        children,
+        title = "",
+        header = undefined,
+        class: className = "",
+    } = $props();
 </script>
 
 <div
     class="glass rounded-2xl p-6 transition-all duration-300 hover:border-white/10 overflow-hidden relative group {className}"
 >
-    {#if title}
+    {#if header}
+        <!-- 外部自定义头部 -->
+        <div class="mb-6">
+            {@render header()}
+        </div>
+    {:else if title}
         <div class="flex items-center justify-between mb-6">
             <h3 class="font-semibold text-white/90">{title}</h3>
             <div class="w-1.5 h-1.5 rounded-full bg-primary-500/50"></div>

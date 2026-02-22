@@ -23,6 +23,11 @@
             icon: "💰",
             desc: "沪深港通外资持仓动态",
         },
+        news: {
+            label: "新闻舆情",
+            icon: "📰",
+            desc: "个股最新新闻与情感分析",
+        },
     };
 
     // 因子 key → 中文名映射
@@ -37,6 +42,9 @@
         PE: "市盈率 (PE)",
         PB: "市净率 (PB)",
         MarketCap: "总市值",
+        FlowCap: "流通市值",
+        LatestPrice: "最新价",
+        Industry: "所属行业",
         ROE: "净资产收益率",
         HoldingRatio: "持股比例",
         NetBuy: "当日增持",
@@ -71,6 +79,9 @@
         低仓位: { bg: "bg-amber-500/15", text: "text-amber-400" },
         连续买入: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
         资金流出: { bg: "bg-rose-500/15", text: "text-rose-400" },
+        偏多: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+        偏空: { bg: "bg-rose-500/15", text: "text-rose-400" },
+        暂无数据: { bg: "bg-slate-500/15", text: "text-slate-400" },
     };
 
     let symbol = $state("600519");
@@ -84,9 +95,7 @@
         error = "";
         data = null;
         try {
-            const res = await fetch(
-                `http://localhost:8000/api/factors/${symbol}`,
-            );
+            const res = await fetch(`/api/factors/${symbol}`);
             if (!res.ok) throw new Error(`服务端错误: ${res.status}`);
             data = await res.json();
             if (data.error) throw new Error(data.error);
@@ -255,7 +264,86 @@
                         </div>
                     </div>
 
-                    {#if data[catKey] && typeof data[catKey] === "object" && Object.keys(data[catKey]).length > 0}
+                    {#if catKey === "news" && data[catKey] && data[catKey].items && data[catKey].items.length > 0}
+                        <!-- 新闻因子专用渲染：情感概览 + 新闻列表 -->
+                        <div class="space-y-4">
+                            <!-- 情感概览 -->
+                            <div
+                                class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.03]"
+                            >
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm text-white/60"
+                                        >舆情得分</span
+                                    >
+                                    <span
+                                        class="text-lg font-bold text-white/90 tabular-nums"
+                                        >{data[catKey].sentiment_score}</span
+                                    >
+                                </div>
+                                <span
+                                    class="px-2.5 py-0.5 rounded-full text-[11px] font-medium {getSignalStyle(
+                                        data[catKey].sentiment_signal,
+                                    ).bg} {getSignalStyle(
+                                        data[catKey].sentiment_signal,
+                                    ).text}"
+                                >
+                                    {data[catKey].sentiment_signal}
+                                </span>
+                            </div>
+                            <!-- 新闻列表 -->
+                            <div
+                                class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1 custom-scrollbar"
+                            >
+                                {#each data[catKey].items as news, i}
+                                    <a
+                                        href={news.url || "#"}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="group/news block px-3 py-2.5 rounded-lg hover:bg-white/[0.04] transition-colors border border-transparent hover:border-white/5"
+                                    >
+                                        <div class="flex items-start gap-2">
+                                            <span
+                                                class="text-[10px] text-white/15 mt-1 min-w-[16px]"
+                                                >{i + 1}</span
+                                            >
+                                            <div class="flex-1 min-w-0">
+                                                <p
+                                                    class="text-sm text-white/75 group-hover/news:text-white/90 transition-colors leading-relaxed line-clamp-2"
+                                                >
+                                                    {news.title}
+                                                </p>
+                                                <div
+                                                    class="flex items-center gap-3 mt-1.5"
+                                                >
+                                                    {#if news.source}
+                                                        <span
+                                                            class="text-[10px] text-white/25"
+                                                            >{news.source}</span
+                                                        >
+                                                    {/if}
+                                                    {#if news.time}
+                                                        <span
+                                                            class="text-[10px] text-white/20"
+                                                            >{news.time}</span
+                                                        >
+                                                    {/if}
+                                                </div>
+                                            </div>
+                                            <span
+                                                class="text-[10px] text-white/10 group-hover/news:text-white/30 mt-1"
+                                                >↗</span
+                                            >
+                                        </div>
+                                    </a>
+                                {/each}
+                            </div>
+                            <div
+                                class="text-center text-[10px] text-white/15 pt-1"
+                            >
+                                共 {data[catKey].count} 条相关新闻
+                            </div>
+                        </div>
+                    {:else if catKey !== "news" && data[catKey] && typeof data[catKey] === "object" && Object.keys(data[catKey]).length > 0}
                         <div class="space-y-5">
                             {#each Object.entries(data[catKey]) as [key, factor]}
                                 <div

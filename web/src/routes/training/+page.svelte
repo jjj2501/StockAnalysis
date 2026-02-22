@@ -27,8 +27,8 @@
         // 加载设备和历史训练任务
         try {
             const [statusRes, historyRes] = await Promise.all([
-                fetch("http://localhost:8000/api/gpu/status"),
-                fetch("http://localhost:8000/api/gpu/training/status"),
+                fetch("/api/gpu/status"),
+                fetch("/api/gpu/training/status"),
             ]);
             gpuStatus = await statusRes.json();
             trainingHistory = await historyRes.json();
@@ -63,7 +63,7 @@
         };
 
         try {
-            const res = await fetch("http://localhost:8000/api/gpu/train", {
+            const res = await fetch("/api/gpu/train", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ symbol }),
@@ -85,7 +85,7 @@
         pollTimer = setInterval(async () => {
             try {
                 const res = await fetch(
-                    `http://localhost:8000/api/gpu/training/status?symbol=${symbol}`,
+                    `/api/gpu/training/status?symbol=${symbol}`,
                 );
                 const tasks = await res.json();
                 if (tasks.length > 0) {
@@ -102,9 +102,7 @@
                         training = false;
 
                         // 刷新历史
-                        const histRes = await fetch(
-                            "http://localhost:8000/api/gpu/training/status",
-                        );
+                        const histRes = await fetch("/api/gpu/training/status");
                         trainingHistory = await histRes.json();
 
                         // 如果训练完成，绘制损失曲线
