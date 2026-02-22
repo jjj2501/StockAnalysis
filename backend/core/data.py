@@ -382,18 +382,20 @@ class DataFetcher:
         """
         try:
             # 默认类别
-            all_cats = ['technical', 'fundamental', 'sentiment', 'northbound']
+            all_cats = ['technical', 'fundamental', 'sentiment', 'northbound', 'news']
             target_cats = categories if categories else all_cats
             
             # 使用列表保存需要执行的任务
             tasks = []
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=6) as executor:
                 if 'technical' in target_cats or 'sentiment' in target_cats:
                     tasks.append(executor.submit(self._fetch_tech_and_sentiment, symbol))
                 if 'fundamental' in target_cats:
                     tasks.append(executor.submit(self._fetch_fundamental, symbol))
                 if 'northbound' in target_cats:
                     tasks.append(executor.submit(self._fetch_northbound, symbol))
+                if 'news' in target_cats:
+                    tasks.append(executor.submit(self._fetch_news, symbol))
 
             results = {}
             for future in as_completed(tasks):
@@ -407,7 +409,8 @@ class DataFetcher:
                 "technical": results.get("technical", {}),
                 "sentiment": results.get("sentiment", {}),
                 "fundamental": results.get("fundamental", {}),
-                "northbound": results.get("northbound", {})
+                "northbound": results.get("northbound", {}),
+                "news": results.get("news", {})
             }
             
             # 如果是从技术面任务获取的日期，则使用真实数据日期
@@ -525,6 +528,98 @@ class DataFetcher:
             }}
         except Exception as e:
             logger.warning(f"获取北上资金数据失败: {e}")
+            return {}
+
+    def _fetch_news(self, symbol: str) -> dict:
+        """获取个股新闻因子（最新 10 条新闻 + 情感摘要）"""
+        try:
+            self._clear_proxy()
+            # 使用超时控制获取个股新闻
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(ak.stock_news_em, symbol=symbol)
+                try:
+                    news_df = future.result(timeout=15)  # 15 秒超时
+                except Exception as timeout_err:
+                    logger.warning(f"新闻数据请求超时（15s）{symbol}: {timeout_err}")
+                    return {}
+            
+            if news_df is None or news_df.empty:
+                logger.warning(f"新闻数据为空: {symbol}")
+                return {}
+            
+            # 记录实际列名（便于调试 akshare 版本变更）
+            logger.info(f"新闻数据列名: {list(news_df.columns)}")
+            
+            # 取最新 10 条新闻
+            news_list = []
+            for _, row in news_df.head(10).iterrows():
+                # 容错列名（适配不同 akshare 版本）
+                title = ''
+                for col in ['新闻标题', '标题', 'title']:
+                    if col in row.index and row[col]:
+                        title = str(row[col])
+                        break
+                
+                pub_time = ''
+                for col in ['发布时间', '时间', '日期', 'datetime', 'date']:
+                    if col in row.index and row[col]:
+                        pub_time = str(row[col])
+                        break
+                
+                source = ''
+                for col in ['文章来源', '来源', 'source']:
+                    if col in row.index and row[col]:
+                        source = str(row[col])
+                        break
+                
+                url = ''
+                for col in ['新闻链接', '链接', 'url', 'link']:
+                    if col in row.index and row[col]:
+                        url = str(row[col])
+                        break
+                
+                if title:  # 只添加有标题的新闻
+                    news_list.append({
+                        "title": title,
+                        "time": pub_time,
+                        "source": source,
+                        "url": url
+                    })
+            
+            # 简单情感分析：基于标题关键词统计
+            positive_words = ['涨', '突破', '创新高', '大涨', '增长', '利好', '超预期', '强势', '反弹', '上涨', '买入', '看多']
+            negative_words = ['跌', '下跌', '大跌', '暴跌', '下滑', '利空', '风险', '警告', '发行', '清仓', '看空', '减持']
+            
+            pos_count = 0
+            neg_count = 0
+            for item in news_list:
+                t = item['title']
+                pos_count += sum(1 for w in positive_words if w in t)
+                neg_count += sum(1 for w in negative_words if w in t)
+            
+            total = pos_count + neg_count
+            if total > 0:
+                sentiment_score = round((pos_count - neg_count) / total * 100, 1)
+            else:
+                sentiment_score = 0
+            
+            if sentiment_score > 20:
+                sentiment_signal = "偏多"
+            elif sentiment_score < -20:
+                sentiment_signal = "偏空"
+            else:
+                sentiment_signal = "中性"
+            
+            logger.info(f"新闻因子: {len(news_list)} 条新闻, 情感分={sentiment_score}, 信号={sentiment_signal}")
+            
+            return {"news": {
+                "items": news_list,
+                "sentiment_score": sentiment_score,
+                "sentiment_signal": sentiment_signal,
+                "count": len(news_list)
+            }}
+        except Exception as e:
+            logger.warning(f"获取新闻数据失败: {e}")
             return {}
 
     @staticmethod
