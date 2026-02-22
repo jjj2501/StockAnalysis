@@ -27,8 +27,8 @@
         loading = true;
         try {
             const [statusRes, configRes] = await Promise.all([
-                fetch("http://localhost:8000/api/gpu/status"),
-                fetch("http://localhost:8000/api/gpu/config/current"),
+                fetch("/api/gpu/status"),
+                fetch("/api/gpu/config/current"),
             ]);
             gpuStatus = await statusRes.json();
             config = await configRes.json();
@@ -53,21 +53,18 @@
         saving = true;
         saveMsg = "";
         try {
-            const res = await fetch(
-                "http://localhost:8000/api/gpu/config/update",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        batch_size: batchSize,
-                        epochs: epochs,
-                        learning_rate: learningRate,
-                        model_hidden_dim: hiddenDim,
-                        model_num_layers: numLayers,
-                        sequence_length: seqLength,
-                    }),
-                },
-            );
+            const res = await fetch("/api/gpu/config/update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    batch_size: batchSize,
+                    epochs: epochs,
+                    learning_rate: learningRate,
+                    model_hidden_dim: hiddenDim,
+                    model_num_layers: numLayers,
+                    sequence_length: seqLength,
+                }),
+            });
             if (res.ok) {
                 saveMsg = "✅ 配置已保存成功";
             } else {

@@ -1,39 +1,75 @@
 <script>
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import Card from "$lib/components/Card.svelte";
     import { marked } from "marked"; // 用于渲染 AI Markdown 报告
+    import {
+        Chart,
+        PieController,
+        ArcElement,
+        Tooltip,
+        Legend,
+    } from "chart.js";
 
-    // 投资组合响应式状态 (目前前端写死初始组合，后续可做成增删改查)
+    Chart.register(PieController, ArcElement, Tooltip, Legend);
+
+    // 投资组合响应式状态 (包含全球多空资产)
     let portfolio = $state([
+        {
+            name: "苹果公司",
+            symbol: "AAPL",
+            shares: 50,
+            price: 247.7,
+            cost: 200.0,
+            market: "US",
+            currency: "USD",
+            asset_type: "STOCK",
+        },
+        {
+            name: "腾讯控股",
+            symbol: "0700",
+            shares: 500,
+            price: 405.2,
+            cost: 350.0,
+            market: "HK",
+            currency: "HKD",
+            asset_type: "STOCK",
+        },
         {
             name: "贵州茅台",
             symbol: "600519",
             shares: 100,
             price: 1680.5,
             cost: 1580.0,
+            market: "CN",
+            currency: "CNY",
+            asset_type: "STOCK",
         },
         {
-            name: "宁德时代",
-            symbol: "300750",
-            shares: 200,
-            price: 198.3,
-            cost: 210.0,
+            name: "比特币核心",
+            symbol: "BTC-USD",
+            shares: 1,
+            price: 95500.0,
+            cost: 85000.0,
+            market: "CRYPTO",
+            currency: "USD",
+            asset_type: "CRYPTO",
         },
         {
-            name: "中国平安",
-            symbol: "601318",
-            shares: 500,
-            price: 48.6,
-            cost: 45.2,
-        },
-        {
-            name: "五粮液",
-            symbol: "000858",
-            shares: 300,
-            price: 156.3,
-            cost: 162.5,
+            name: "美元现金活期",
+            symbol: "CASH_USD",
+            shares: 100000,
+            price: 1.0,
+            cost: 1.0,
+            market: "CASH",
+            currency: "USD",
+            asset_type: "CASH",
         },
     ]);
+
+    /** @type {HTMLCanvasElement|null} */
+    let chartCanvas = $state(null);
+    /** @type {any} */
+    let pieChartInstance = $state(null);
 
     // 计算总资产与盈亏
     let totalPositionValue = $derived(
@@ -61,24 +97,24 @@
         riskError = "";
 
         try {
-            // 构造请求数据 (只传 symbol, shares, price)
+            // 构造请求数据，附带 market 和 currency 给后端穿透汇率中心
             const payload = portfolio.map((s) => ({
                 symbol: s.symbol,
                 shares: s.shares,
                 price: s.price,
+                market: s.market,
+                currency: s.currency,
+                asset_type: s.asset_type,
             }));
 
-            const res = await fetch(
-                "http://localhost:8000/api/portfolio/risk",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        portfolio: payload,
-                        force_refresh: forceRefresh,
-                    }),
-                },
-            );
+            const res = await fetch("/api/portfolio/risk", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    portfolio: payload,
+                    force_refresh: forceRefresh,
+                }),
+            });
 
             if (!res.ok) {
                 const errData = await res.json();
@@ -86,11 +122,68 @@
             }
 
             riskReport = await res.json();
+
+            // 绘制饼图
+            await tick();
+            if (riskReport && riskReport.assets_breakdown && chartCanvas) {
+                renderPieChart(riskReport.assets_breakdown);
+            }
         } catch (e) {
             riskError = e.message;
         } finally {
             isAnalyzing = false;
         }
+    }
+
+    function renderPieChart(/** @type {any[]} */ breakdown) {
+        if (pieChartInstance) {
+            pieChartInstance.destroy();
+        }
+
+        const ctx = chartCanvas.getContext("2d");
+        const labels = breakdown.map((item) => item.symbol);
+        const data = breakdown.map((item) => item.weight * 100);
+
+        // 自动按市值给颜色
+        const bgColors = [
+            "rgba(244, 63, 94, 0.7)", // rose
+            "rgba(59, 130, 246, 0.7)", // blue
+            "rgba(16, 185, 129, 0.7)", // emerald
+            "rgba(245, 158, 11, 0.7)", // amber
+            "rgba(139, 92, 246, 0.7)", // violet
+        ];
+
+        pieChartInstance = new Chart(ctx, {
+            type: "pie",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        data: data,
+                        backgroundColor: bgColors.slice(0, data.length),
+                        borderWidth: 1,
+                        borderColor: "rgba(255, 255, 255, 0.1)",
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: "right",
+                        labels: { color: "rgba(255, 255, 255, 0.7)" },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (tooltipItem) {
+                                return ` ${tooltipItem.label}: ${tooltipItem.raw.toFixed(1)}%`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
     }
 </script>
 
@@ -153,16 +246,13 @@
             </div>
         </Card>
         <Card>
-            <div class="text-sm text-white/40 mb-1">持仓总市值</div>
-            <div class="text-3xl font-bold">
-                ¥ {totalPositionValue.toLocaleString()}
+            <div class="text-sm text-white/40 mb-1">
+                持仓总市值 (原币种加总假象)
             </div>
-            <div class="text-xs text-white/30 mt-1">
-                占比 {(
-                    (totalPositionValue / (totalPositionValue + 246913)) *
-                    100
-                ).toFixed(1)}%
+            <div class="text-3xl font-bold text-white/50">
+                {totalPositionValue.toLocaleString()}
             </div>
+            <div class="text-xs text-rose-400 mt-1">⚠️ 未折算汇率</div>
         </Card>
         <Card>
             <div class="text-sm text-white/40 mb-1">可用资金</div>
@@ -187,29 +277,31 @@
     <!-- 风险诊断报告仪盘 -->
     {#if riskReport}
         <Card>
-            <div slot="header" class="flex justify-between items-center w-full">
-                <div class="flex items-center gap-3">
-                    <h3 class="font-bold text-lg">风控诊断报告</h3>
-                    {#if riskReport.cached}
-                        <span
-                            class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20"
-                        >
-                            ⚡ 极速缓存
-                        </span>
-                    {/if}
+            {#snippet header()}
+                <div class="flex justify-between items-center w-full">
+                    <div class="flex items-center gap-3">
+                        <h3 class="font-bold text-lg">风控诊断报告</h3>
+                        {#if riskReport.cached}
+                            <span
+                                class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20"
+                            >
+                                ⚡ 极速缓存
+                            </span>
+                        {/if}
+                    </div>
+                    <button
+                        onclick={() => analyzeRisk(true)}
+                        disabled={isAnalyzing}
+                        class="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-white/70 transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                        {#if isAnalyzing}
+                            <span class="animate-spin">⏳</span> 重新计算中...
+                        {:else}
+                            🔄 强制重新计算
+                        {/if}
+                    </button>
                 </div>
-                <button
-                    onclick={() => analyzeRisk(true)}
-                    disabled={isAnalyzing}
-                    class="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-white/70 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                    {#if isAnalyzing}
-                        <span class="animate-spin">⏳</span> 重新计算中...
-                    {:else}
-                        🔄 强制重新计算
-                    {/if}
-                </button>
-            </div>
+            {/snippet}
 
             <!-- 第一排：核心绩效与机构指标 -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-4 mt-4">
@@ -255,8 +347,20 @@
                 >
                     <div class="text-sm text-white/40 mb-2">组合当前总值</div>
                     <div class="text-2xl font-bold text-emerald-400">
-                        ¥ {riskReport.total_value.toLocaleString()}
+                        ¥ {riskReport.total_value.toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                        })}
                     </div>
+                </div>
+            </div>
+
+            <!-- 分布占比区域 (Pie Chart) -->
+            <div class="mb-8 p-5 bg-black/20 rounded-xl border border-white/5">
+                <div class="text-sm font-medium text-white/60 mb-4">
+                    穿透汇率后的人民币真实法币净值占比分析
+                </div>
+                <div class="h-48 w-full flex justify-center">
+                    <canvas bind:this={chartCanvas}></canvas>
                 </div>
             </div>
 
@@ -323,6 +427,10 @@
                             >股票</th
                         >
                         <th
+                            class="text-left py-3 px-3 text-white/40 font-medium"
+                            >市场 / 计价币种</th
+                        >
+                        <th
                             class="text-right py-3 px-3 text-white/40 font-medium"
                             >持仓数量</th
                         >
@@ -367,6 +475,18 @@
                                             {stock.symbol}
                                         </div>
                                     </div>
+                                </div>
+                            </td>
+                            <td class="py-3 px-3 text-left">
+                                <div class="flex flex-col gap-1">
+                                    <span
+                                        class="w-min px-2 py-0.5 rounded-md bg-white/10 text-xs text-white/70 font-mono"
+                                        >{stock.market}</span
+                                    >
+                                    <span
+                                        class="w-min px-2 py-0.5 rounded-md bg-yellow-500/10 text-xs text-yellow-400 font-mono"
+                                        >{stock.currency}</span
+                                    >
                                 </div>
                             </td>
                             <td class="py-3 px-3 text-right">{stock.shares}</td>

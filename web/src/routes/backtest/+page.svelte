@@ -54,7 +54,7 @@
         aiReport = "";
         try {
             const res = await fetch(
-                `http://localhost:8000/api/backtest/${symbol}?start_date=${startDate}&end_date=${endDate}&strategy_type=${strategy}`,
+                `/api/backtest/${symbol}?start_date=${startDate}&end_date=${endDate}&strategy_type=${strategy}`,
             );
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || "回测接口响应异常");
@@ -143,18 +143,15 @@
         if (!result) return;
         aiLoading = true;
         try {
-            const res = await fetch(
-                "http://localhost:8000/api/backtest/analyze",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        symbol: result.symbol,
-                        strategy: result.strategy,
-                        summary: result.result.summary,
-                    }),
-                },
-            );
+            const res = await fetch("/api/backtest/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    symbol: result.symbol,
+                    strategy: result.strategy,
+                    summary: result.result.summary,
+                }),
+            });
             if (!res.ok) throw new Error("分析请求失败");
             const data = await res.json();
             let raw = data.report || "未能生成报告";

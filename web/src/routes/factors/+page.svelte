@@ -84,9 +84,7 @@
         error = "";
         data = null;
         try {
-            const res = await fetch(
-                `http://localhost:8000/api/factors/${symbol}`,
-            );
+            const res = await fetch(`/api/factors/${symbol}`);
             if (!res.ok) throw new Error(`服务端错误: ${res.status}`);
             data = await res.json();
             if (data.error) throw new Error(data.error);
