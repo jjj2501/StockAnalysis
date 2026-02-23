@@ -94,6 +94,13 @@ FastAPI async backend + SvelteKit modern frontend + JWT Auth + Audit Logs + SSE 
 
 ![风控核心指标截图 / Risk Dashboard Image](docs/images/portfolio_risk.png)
 
+<details>
+<summary><b>点击查看 AI 深度诊断报告 / Click for Full AI Diagnosis Report</b></summary>
+<br/>
+
+![AI 智能分析与建仓建议 / AI Risk Report](docs/images/portfolio_ai_risk.png)
+</details>
+
 ### 🧠 混合双塔大模型训练仓 / Model Training Core
 > 原生全自动 NVIDIA GPU 侦测，配备 Transformer + LSTM 参数面板与实时的训练 Loss 瀑布曲线分析。
 > Native auto NVIDIA GPU detection, Transformer + LSTM parameter tuning, and real-time loss waterfall curve visualization.
