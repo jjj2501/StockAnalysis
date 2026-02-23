@@ -1,79 +1,313 @@
 <div align="center">
-  <h1>AlphaPulse (StockAnalysis)</h1>
-  <p>一个由十几年交易老兵写就的硬核全栈开源量化打靶场</p>
-  <p><b>Transformer + LSTM 混合神经网络 × 本地 Ollama 无情风控官</b></p>
+  <img src="docs/images/logo.png" alt="AlphaPulse Logo" width="80" />
+  <h1>AlphaPulse</h1>
+  <p><strong>AI 驱动的全栈量化投资分析平台</strong></p>
+  <p>Transformer + LSTM 混合深度学习 · 本地大模型智能风控 · 多维因子实时分析</p>
+
+  <br />
+
+  ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)
+  ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+  ![SvelteKit](https://img.shields.io/badge/SvelteKit-FF3E00?style=flat-square&logo=svelte&logoColor=white)
+  ![PyTorch](https://img.shields.io/badge/PyTorch-CUDA-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)
+  ![Ollama](https://img.shields.io/badge/Ollama-LLM-000000?style=flat-square&logo=ollama&logoColor=white)
+  ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
+
 </div>
 
 ---
 
-## 🚀 核心看点：不仅是工具，更是练兵场
+## ✨ 项目亮点
 
-### 1. 给极客的：极致丝滑的全栈 FinTech 靶场
-- **极简前端：** 跑满了深色模式的 SvelteKit，抛开臃肿的依赖，渲染极度流畅。
-- **高性能引擎：** 粗暴的 Python + FastAPI。从特征清洗到 GPU 显存控制，全套代码公开。
-- **原生本地大模型：** 不是调 API！直接对接本地 Ollama（如 `qwen2.5`）。我特调了 Prompt，把复杂的夏普、回撤等数学矩阵硬生生喂给大模型，把它逼成了风控官。想学怎么把真实的业务数据跟大模型的脑子揉合在一起？拆这套骨架就够了。
+<table>
+<tr>
+<td width="50%">
 
-### 2. 给散户的：带血的赛博“首席风控官”
-机构的风控逻辑往往秘不示人。我把它降维抽了出来：
-- **直面你的极限亏损 (Max Drawdown)：** 别算百分比。用真实数据告诉你，最倒霉的时候你的账户会白白蒸发掉几万块现大洋。
-- **评价你的“性价比” (Sharpe Ratio)：** 天天赌单边，夏普要是负的，说明你冒着倾家荡产的风险，连存银行吃利息都不如。
-- **揪出“假分散” (Correlation Matrix)：** 后台极其消耗算力的皮尔逊相关性矩阵，把“穿同一条裤子”的股票全扒出来。一荣俱荣，一跌那就是抱团结伴跳楼。
-- **无情的 AI 调仓手术：** 结合这些硬核指标，AI 不会哄你，只会直接下令：砍掉 15% 某高危仓位，全仓切防御型资产！
+### 🧠 混合深度学习引擎
+自研 **Transformer + LSTM** 双塔混合模型，Transformer 捕捉全局注意力特征，LSTM 提取局部时序动态。支持 **NVIDIA GPU (CUDA)** 加速训练与推理，自动检测显卡并优化显存分配。
+
+</td>
+<td width="50%">
+
+### 🤖 本地 AI 风控官
+集成本地 **Ollama 大语言模型**（支持 Qwen、DeepSeek 等），将夏普比率、最大回撤、VaR 等复杂的风控数学矩阵注入 Prompt，由 AI 生成机构级的**投资组合诊断报告与调仓建议**。
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 📊 五维量化因子分析
+实时获取 A 股**技术指标 · 基本面 · 市场情绪 · 北上资金 · 新闻舆情**五大类因子数据，并基于关键词 NLP 情感分析生成舆情得分与多空信号，为决策提供全方位数据支撑。
+
+</td>
+<td width="50%">
+
+### 🏗️ 生产级全栈架构
+FastAPI 异步后端 + SvelteKit 现代前端 + JWT 认证体系 + 审计日志 + SSE 实时进度推送。不是一个玩具 Demo，而是一个可直接部署的**企业级应用骨架**。
+
+</td>
+</tr>
+</table>
 
 ---
 
-## 🖼️ 看一看，这个系统长什么样？
+## 🖼️ 界面预览
 
-### 🔥 机构级智能风控面板
-左手夏普指数与绝对最大回撤，右手 AI 基于皮尔逊矩阵写出的硬核“防黑天鹅”药方。
-![机构风控面板](docs/images/institutional_risk_report_1771603076554.png)
+### 🏠 实时大盘与智能解盘
+> 刷新即刻获取 A 股重要宽基指数，自带大模型（Ollama）对当前市场情绪的评估与异动个股推荐。
 
-### 🧠 深度学习模型训练看板
-全自动检测你的显卡！不管是 RTX 还是啥，把参数调好，坐在屏幕前看 Loss 曲线像瀑布一样往下砸。
-![模型训练页面](docs/images/training_page_1771595679062.png)
+![首页概览演示](docs/images/home_page_demo.webp)
+<details>
+<summary><b>点击查看高清截图</b></summary>
+<br/>
 
-### ⚙️ 硬件侦测与管理
-GPU 的 CUDA VRAM 跑满没跑满？配置中心带可视化进度条。
-![GPU状态页](docs/images/settings_gpu_active_success_1771598021170.png)
+![首页看板](docs/images/home_page.png)
+</details>
+
+### 📊 五维因子量化分析
+> 快速获取所选标的的 RSI/WR、市值偏离度、北上资金实时流向、以及集成 NLP 情感降维解析的新闻舆情因子。
+
+![因子分析演示](docs/images/factor_analysis_demo.webp)
+<details>
+<summary><b>点击查看舆情得分分析</b></summary>
+<br/>
+
+![新闻舆情分析](docs/images/factor_analysis_news.png)
+</details>
+
+### � 全链路历史数据回测
+> 构建丝滑的策略调参体验（MACD、RSI），提供精准的净值走势回放与持仓买卖时点流水。
+
+![策略回测演示](docs/images/backtest_demo.webp)
+
+### �🔥 机构级智能风控与 AI 问诊
+> 左侧：夏普比率与极端最大回撤等绝对量化指标。右侧：AI 基于底层实时算出的皮尔逊矩阵开出的硬核"防黑天鹅"处方。
+
+![风控面板演示](docs/images/portfolio_demo.webp)
+<details>
+<summary><b>点击查看绝对量化指标视图</b></summary>
+<br/>
+
+![风控核心指标](docs/images/portfolio_risk.png)
+</details>
+
+### 🧠 混合双塔大模型训练仓
+> 原生全自动 NVIDIA GPU 侦测，配备 Transformer + LSTM 参数面板与实时的训练 Loss 瀑布曲线分析。
+
+![模型训练演示](docs/images/training_demo.webp)
+<details>
+<summary><b>点击查看模型阻击视图</b></summary>
+<br/>
+
+![GPU 加速训练](docs/images/training_progress.png)
+</details>
 
 ---
 
-## 🛠️ 安装与运行指南
+## 🏛️ 系统架构
 
-这套代码虽然硬核，但在你的本地跑起来就一行命令的事。
-
-### 前置要求
-1. Python 3.10+ （推荐使用 `uv` 极速包管理器）
-2. [Ollama](https://ollama.com/) (建议模型: `qwen2.5:7b-instruct`)
-   - 下载并挂在后台服务：`ollama pull qwen2.5:7b-instruct`
-
-### 步骤
-> **说明**：为了彻底激活你的 NVIDIA 独立显卡训练功能，建议通过 `pyproject.toml` 中的 `pytorch-cu121` index 参数，强制安装 CUDA 12 适配版的 PyTorch。
-
-```bash
-# 1. 克隆代码
-git clone https://github.com/YourUsername/StockAnalysis.git
-cd StockAnalysis
-
-# 2. 极速安装依赖 (如果你不用 uv，也可以看 pyproject.toml 挨个装)
-uv sync
-
-# 3. 首次必须初始化一下本地数据库
-uv run python scripts/init_db.py
-
-# 4. 一键启动后端 + Svelte 前端!
-uv run python -m backend.main
+```
+┌──────────────────────────────────────────────────────────┐
+│                    SvelteKit 前端 (v5)                     │
+│  首页概览 · 因子分析 · 量化回测 · 模型训练 · 投资组合 · 系统设置   │
+└──────────────┬───────────────────────────┬────────────────┘
+               │ Vite Proxy / REST API     │ SSE 实时进度
+┌──────────────▼───────────────────────────▼────────────────┐
+│                  FastAPI 后端引擎                           │
+│  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
+│  │ 认证模块 │ │ 数据模块  │ │ 分析模块  │ │ 风控模块      │  │
+│  │ JWT/RBAC │ │ AkShare  │ │ 因子引擎  │ │ VaR/CVaR     │  │
+│  │ Argon2  │ │ 缓存管理  │ │ NLP 情感  │ │ 皮尔逊矩阵   │  │
+│  └─────────┘ └──────────┘ └──────────┘ └──────────────┘  │
+│  ┌──────────────────┐  ┌────────────────────────────┐    │
+│  │ 深度学习引擎       │  │ 本地大模型 (Ollama)          │    │
+│  │ Transformer+LSTM │  │ Qwen / DeepSeek / Llama    │    │
+│  │ GPU CUDA 加速     │  │ 智能诊断 · 调仓建议          │    │
+│  └──────────────────┘  └────────────────────────────┘    │
+└──────────────────────────────────────────────────────────┘
 ```
 
-启动后，访问浏览器: [http://localhost:8000](http://localhost:8000)。然后你就可以开玩了。
+---
+
+## 🚀 快速开始
+
+### 前置要求
+
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Python | 3.10+ | 推荐使用 [uv](https://docs.astral.sh/uv/) 包管理器 |
+| Node.js | 18+ | 前端构建所需 |
+| Ollama | 最新版 | [下载地址](https://ollama.com/)，AI 风控功能所需 |
+| NVIDIA GPU | 可选 | 有则自动启用 CUDA 加速训练 |
+
+### 一键启动
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/jjj2501/StockAnalysis.git
+cd StockAnalysis
+
+# 2. 安装后端依赖
+uv sync
+
+# 3. 安装前端依赖
+cd web && npm install && cd ..
+
+# 4. 拉取 AI 模型 (可选，用于智能风控)
+ollama pull qwen3:1.7b
+
+# 5. 启动后端
+uv run python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+
+# 6. 启动前端 (新终端)
+cd web && npm run dev
+```
+
+启动后访问 **http://localhost:3001** 开始使用 🎉
 
 ---
 
-## 🔐 完整能力速览
+## 📋 功能全景
 
-- **JWT 令牌鉴权与权限树：** `/api/auth/` 支持完整的登录注册、无痛刷新（Refresh Token）以及 Argon2 工业级跨站安全防护。
-- **动态显存清理：** `/api/gpu/clear-cache` 可解决在复杂 LSTM 训练中导致的多批次 Out-Of-Memory 问题。
-- **一键风控预演：** 基于过去一年回溯与大满贯因子的 `POST /api/portfolio/risk`，可承载巨量持仓请求（含即刻 LRU 极速缓存）。
+### 核心功能
 
-> 有什么 bug 在 issue 喊我，我晚上有空的时候再修。
-> 在这个残酷的市场里，你不能总是赤手空拳。克隆它，去建立属于你自己的兵工厂。
+| 模块 | 功能 | 技术实现 |
+|------|------|----------|
+| 📊 **因子分析** | 技术面 (RSI/WR/ROC/BB) + 基本面 (市值/行业) + 情绪面 (换手/量比) + 北上资金 + 新闻舆情 | AkShare + NLP 情感分析 |
+| 📈 **量化回测** | MACD/RSI 等策略回测，收益曲线、交易信号可视化 | 自研回测引擎 + AI 诊断报告 |
+| 🧠 **模型训练** | Transformer + LSTM 混合模型训练，支持超参数配置 | PyTorch + CUDA + SSE 进度推送 |
+| 🛡️ **智能风控** | 投资组合 VaR/CVaR 计算、皮尔逊相关矩阵、AI 调仓建议 | Ollama LLM + 数学引擎 |
+| 💼 **投资组合** | 多资产组合管理、持仓分析、风险预警 | SQLite + LRU 缓存 |
+
+### 安全与运维
+
+| 特性 | 说明 |
+|------|------|
+| 🔐 JWT 双 Token 认证 | Access Token + Refresh Token，支持无感刷新 |
+| 👤 RBAC 权限控制 | 管理员 / 普通用户角色分离 |
+| 🔒 Argon2 密码加密 | 工业级密码哈希方案 |
+| 📝 审计日志 | 全量操作审计，自动记录用户行为 |
+| 🎛️ GPU 显存管理 | 一键清理 CUDA 显存，解决 OOM 问题 |
+
+---
+
+## 🛠️ 技术栈
+
+<table>
+<tr>
+<td align="center" width="25%"><b>前端</b></td>
+<td align="center" width="25%"><b>后端</b></td>
+<td align="center" width="25%"><b>AI / ML</b></td>
+<td align="center" width="25%"><b>数据</b></td>
+</tr>
+<tr>
+<td>
+
+- SvelteKit 5
+- Tailwind CSS 4
+- Chart.js
+- Vite
+
+</td>
+<td>
+
+- FastAPI
+- SQLite + SQLAlchemy
+- Uvicorn (ASGI)
+- Pydantic
+
+</td>
+<td>
+
+- PyTorch (CUDA)
+- Transformer + LSTM
+- Ollama (Qwen/DeepSeek)
+- NLP 情感分析
+
+</td>
+<td>
+
+- AkShare (A 股行情)
+- 东方财富实时数据
+- Parquet 本地缓存
+- 增量数据更新
+
+</td>
+</tr>
+</table>
+
+---
+
+## 📁 项目结构
+
+```
+StockAnalysis/
+├── backend/                  # Python 后端
+│   ├── api/                  #   API 路由层 (RESTful + SSE)
+│   ├── auth/                 #   认证授权 (JWT + RBAC + 审计)
+│   ├── core/                 #   核心业务逻辑
+│   │   ├── model.py          #     Transformer+LSTM 混合模型
+│   │   ├── engine.py         #     训练 & 推理引擎
+│   │   ├── data.py           #     数据获取 & 因子计算
+│   │   ├── backtester.py     #     回测引擎
+│   │   ├── risk.py           #     风控计算 (VaR/CVaR)
+│   │   ├── llm.py            #     LLM 集成 (Ollama)
+│   │   └── gpu_utils.py      #     GPU 管理工具
+│   └── main.py               #   应用入口
+├── web/                      # SvelteKit 前端
+│   └── src/routes/           #   页面路由
+│       ├── factors/          #     因子分析
+│       ├── backtest/         #     量化回测
+│       ├── training/         #     模型训练
+│       ├── portfolio/        #     投资组合
+│       └── settings/         #     系统设置
+├── docs/                     # 文档 & 截图
+└── pyproject.toml            # 项目配置
+```
+
+---
+
+## 🗺️ 路线图
+
+- [x] Transformer + LSTM 混合模型训练 & 推理
+- [x] 五维量化因子分析 (技术/基本面/情绪/北上/新闻)
+- [x] 本地 Ollama 大模型智能风控
+- [x] 投资组合风险管理 (VaR/CVaR)
+- [x] 完整 JWT 认证 & RBAC 权限体系
+- [x] GPU CUDA 加速与显存管理
+- [ ] K 线图表与技术指标叠加
+- [ ] 多策略组合回测框架
+- [ ] 实时行情 WebSocket 推送
+- [ ] Docker 一键部署方案
+
+---
+
+## 🤝 参与贡献
+
+我们欢迎任何形式的贡献！
+
+1. **Fork** 本仓库
+2. 创建你的特性分支：`git checkout -b feature/amazing-feature`
+3. 提交变更：`git commit -m 'feat: 添加某个很棒的功能'`
+4. 推送到分支：`git push origin feature/amazing-feature`
+5. 提交 **Pull Request**
+
+---
+
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE) 开源许可证。
+
+---
+
+<div align="center">
+  <p>
+    <strong>在这个残酷的市场里，你不能总是赤手空拳。</strong>
+  </p>
+  <p>
+    克隆它，去构建属于你自己的量化武器库。
+  </p>
+  <br />
+  <sub>⭐ 如果这个项目对你有帮助，请给一个 Star 支持一下！</sub>
+</div>
