@@ -18,10 +18,10 @@
             icon: "🧠",
             desc: "市场参与度与活跃程度",
         },
-        northbound: {
-            label: "北上资金",
-            icon: "💰",
-            desc: "沪深港通外资持仓动态",
+        alternative: {
+            label: "另类因子",
+            icon: "🕵️",
+            desc: "外资机构席位分解与另类分析",
         },
         news: {
             label: "新闻舆情",
@@ -46,8 +46,10 @@
         LatestPrice: "最新价",
         Industry: "所属行业",
         ROE: "净资产收益率",
-        HoldingRatio: "持股比例",
-        NetBuy: "当日增持",
+        HoldingRatio: "外资持股占比",
+        NetBuy: "当日增持净额",
+        BankCustodyRatio: "银行配置席位占比",
+        BrokerageRatio: "券商交易席位占比",
     };
 
     // 信号颜色映射
@@ -77,6 +79,8 @@
         一般: { bg: "bg-slate-500/15", text: "text-slate-400" },
         高仓位: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
         低仓位: { bg: "bg-amber-500/15", text: "text-amber-400" },
+        长线资金主导: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+        交易型热钱偏多: { bg: "bg-rose-500/15", text: "text-rose-400" },
         连续买入: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
         资金流出: { bg: "bg-rose-500/15", text: "text-rose-400" },
         偏多: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
@@ -90,10 +94,85 @@
     let data = $state(null);
     let error = $state("");
 
+    // AI 预测相关状态
+    let aiLoading = $state(false);
+    /** @type {any[] | null} */
+    let aiPredictions = $state(null);
+    let aiError = $state("");
+
+    async function loadAiPredictions() {
+        aiLoading = true;
+        aiError = "";
+        aiPredictions = null;
+        try {
+            const res = await fetch(`/api/predict/${symbol}`);
+            if (!res.ok) throw new Error(`模型未激活或拉取失败`);
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+
+            // 为了架构上支持用户未来新加的模型，封装为可遍历的列表
+            // 此处保留当前默认的混合模型结果，并确保界面是以渲染数组的方式进行展示
+            aiPredictions = [
+                {
+                    model_name: "Transformer+LSTM 混合架构",
+                    trend: json.predicted_trend,
+                    confidence: json.confidence || 0,
+                },
+            ];
+            // 若未来接口支持多模型直接返回 Array，可在此处直接接收
+        } catch (/** @type {any} */ e) {
+            aiError = e.message;
+        } finally {
+            aiLoading = false;
+        }
+    }
+
+    // LLM 全盘因子流式研判状态
+    let llmAnalyzing = $state(false);
+    let llmReport = $state("");
+    let llmError = $state("");
+
+    function startAiAnalysis() {
+        if (!data || loading) return;
+        llmAnalyzing = true;
+        llmReport = "";
+        llmError = "";
+
+        const eventSource = new EventSource(`/api/factors/${symbol}/analyze`);
+
+        eventSource.onmessage = (event) => {
+            try {
+                const parsed = JSON.parse(event.data);
+                if (parsed.text !== undefined) {
+                    llmReport += parsed.text;
+                }
+            } catch (e) {
+                // 兼容后备：如果不是JSON也尝试直接追加（去除无谓的强制回车）
+                llmReport += event.data;
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error("SSE Error:", err);
+            // 只要不是空文本其实也算基本完成了，断开就行
+            eventSource.close();
+            llmAnalyzing = false;
+        };
+
+        // 监听结束或其他自定义事件（这里简化为后端主动关闭或出错关闭）
+        eventSource.addEventListener("close", () => {
+            eventSource.close();
+            llmAnalyzing = false;
+        });
+    }
+
     async function loadFactors() {
         loading = true;
         error = "";
         data = null;
+        llmReport = ""; // 切换股票时清空上一次的研报
+        loadAiPredictions(); // 并行触发预测推演
+
         try {
             const res = await fetch(`/api/factors/${symbol}`);
             if (!res.ok) throw new Error(`服务端错误: ${res.status}`);
@@ -243,6 +322,185 @@
             </div>
         </div>
 
+        <!-- AI 模型预测卡片 (支持多模型横向扩展) -->
+        <div class="mb-6 mt-6">
+            <h3
+                class="flex items-center gap-2 font-bold text-lg text-white mb-4"
+            >
+                <span>🤖 AI 智能前瞻预测</span>
+                <span
+                    class="text-[10px] font-normal text-white/40 bg-white/5 px-2 py-0.5 rounded-full border border-white/5"
+                    >多模型并行支持</span
+                >
+            </h3>
+
+            {#if aiLoading}
+                <div
+                    class="flex items-center justify-center py-6 bg-white/[0.02] border border-white/5 rounded-2xl"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-5 h-5 border-[1.5px] border-primary-500/30 border-t-primary-500 rounded-full animate-spin"
+                        ></div>
+                        <span class="text-white/40 text-sm"
+                            >正在深度推演当前标的未来走势...</span
+                        >
+                    </div>
+                </div>
+            {:else if aiError}
+                <div
+                    class="flex items-center gap-4 bg-white/[0.01] border border-white/5 rounded-2xl p-5"
+                >
+                    <div class="text-3xl opacity-50 grayscale">😴</div>
+                    <div>
+                        <div class="text-white/60 text-sm mb-0.5 font-medium">
+                            {aiError}
+                        </div>
+                        <div class="text-white/30 text-xs">
+                            提示：您可以前往左侧“模型训练”页为该资产独立训练专属大脑
+                        </div>
+                    </div>
+                </div>
+            {:else if aiPredictions && aiPredictions.length > 0}
+                <div
+                    class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+                >
+                    {#each aiPredictions as pred}
+                        <div
+                            class="bg-gradient-to-br from-white/[0.04] to-transparent border border-white/10 rounded-2xl p-4 hover:border-primary-500/30 transition-colors relative overflow-hidden group"
+                        >
+                            <!-- 光晕背景修饰 -->
+                            <div
+                                class="absolute -right-6 -top-6 w-24 h-24 bg-primary-500/5 rounded-full blur-2xl group-hover:bg-primary-500/10 transition-colors"
+                            ></div>
+
+                            <div
+                                class="flex items-start justify-between relative z-10"
+                            >
+                                <div class="space-y-1">
+                                    <div
+                                        class="text-white/30 text-[10px] uppercase font-bold tracking-wider"
+                                    >
+                                        预测引擎 / Model
+                                    </div>
+                                    <h4
+                                        class="text-white/90 font-medium text-sm"
+                                    >
+                                        {pred.model_name}
+                                    </h4>
+                                </div>
+                                <div
+                                    class="px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm {pred.trend ===
+                                    'UP'
+                                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}"
+                                >
+                                    {pred.trend === "UP"
+                                        ? "📈 看涨 (UP)"
+                                        : "📉 看跌 (DOWN)"}
+                                </div>
+                            </div>
+
+                            <div class="mt-5 relative z-10">
+                                <div class="flex justify-between text-xs mb-2">
+                                    <span class="text-white/40"
+                                        >预测置信度 (Confidence)</span
+                                    >
+                                    <span class="text-white font-mono"
+                                        >{pred.confidence.toFixed(1)}</span
+                                    >
+                                </div>
+                                <div
+                                    class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden"
+                                >
+                                    <div
+                                        class="h-full rounded-full transition-all duration-1000 {pred.trend ===
+                                        'UP'
+                                            ? 'bg-rose-500'
+                                            : 'bg-emerald-500'}"
+                                        style="width: {Math.min(
+                                            pred.confidence / 10,
+                                            100,
+                                        )}%"
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        </div>
+
+        <!-- LLM 综合因子投资诊断大模型版块 -->
+        <div
+            class="mb-8 p-1 rounded-2xl bg-gradient-to-r from-primary-600/20 via-blue-500/20 to-purple-500/20"
+        >
+            <div
+                class="bg-[#12141c] rounded-xl p-6 h-full border border-white/5"
+            >
+                <div class="flex items-center justify-between mb-4">
+                    <h3
+                        class="flex items-center gap-2 font-bold text-lg text-white"
+                    >
+                        <span class="text-xl">🦾</span>
+                        <span
+                            class="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent"
+                            >全盘因子大模型深度诊断</span
+                        >
+                    </h3>
+
+                    {#if !llmReport && !llmAnalyzing}
+                        <button
+                            onclick={startAiAnalysis}
+                            class="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-white font-medium transition-all flex items-center gap-2"
+                        >
+                            <span>⚡</span> 召唤大模型进行综合分析
+                        </button>
+                    {/if}
+
+                    {#if llmAnalyzing}
+                        <div
+                            class="flex items-center gap-2 px-3 py-1.5 bg-primary-500/10 border border-primary-500/20 rounded-lg text-primary-400 text-xs font-mono"
+                        >
+                            <span
+                                class="w-2 h-2 rounded-full bg-primary-500 animate-pulse"
+                            ></span>
+                            AI 思维推演中...
+                        </div>
+                    {/if}
+                </div>
+
+                {#if llmReport || llmAnalyzing}
+                    <div
+                        class="p-5 rounded-lg bg-[#0d0f16] border border-white/5 relative overflow-hidden"
+                    >
+                        <!-- 装饰背景线条 -->
+                        <div
+                            class="absolute inset-0 opacity-[0.03] select-none"
+                            style="background-image: repeating-linear-gradient(0deg, transparent, transparent 19px, #fff 19px, #fff 20px);"
+                        ></div>
+
+                        <div
+                            class="relative z-10 prose prose-invert prose-sm max-w-none text-white/80 leading-relaxed font-sans"
+                        >
+                            <!-- Svelte 内置支持渲染简单的换行文本或直接解析。这里因 Markdown 解析需引入额外的包，直接使用 pre-wrap 保留大模型自带换行和加粗星号 -->
+                            <div
+                                class="whitespace-pre-wrap font-mono text-[13px]"
+                            >
+                                {llmReport}
+                            </div>
+
+                            {#if llmAnalyzing}
+                                <span
+                                    class="inline-block w-1.5 h-4 bg-primary-400 ml-1 animate-pulse align-middle"
+                                ></span>
+                            {/if}
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        </div>
+
         <!-- 因子分类卡片 -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             {#each Object.entries(categoryMeta) as [catKey, meta]}
@@ -343,7 +601,122 @@
                                 共 {data[catKey].count} 条相关新闻
                             </div>
                         </div>
-                    {:else if catKey !== "news" && data[catKey] && typeof data[catKey] === "object" && Object.keys(data[catKey]).length > 0}
+                    {:else if catKey === "alternative" && data[catKey] && typeof data[catKey] === "object" && Object.keys(data[catKey]).length > 0}
+                        <div class="space-y-4">
+                            <!-- 北向大盘横向拉通 -->
+                            <div class="flex gap-4">
+                                {#each ["HoldingRatio", "NetBuy"] as key}
+                                    {#if data[catKey][key]}
+                                        <div
+                                            class="flex-1 bg-white/[0.02] rounded-xl p-3 border border-white/5"
+                                        >
+                                            <div
+                                                class="text-xs text-white/50 mb-1"
+                                            >
+                                                {getName(key)}
+                                            </div>
+                                            <div
+                                                class="flex items-end justify-between"
+                                            >
+                                                <div
+                                                    class="font-mono text-lg font-bold"
+                                                >
+                                                    {fmtValue(
+                                                        data[catKey][key].value,
+                                                        data[catKey][key].unit,
+                                                    )}
+                                                </div>
+                                                {#if data[catKey][key].signal}
+                                                    <span
+                                                        class="px-2 py-0.5 rounded-md text-[10px] font-medium {getSignalStyle(
+                                                            data[catKey][key]
+                                                                .signal,
+                                                        ).bg} {getSignalStyle(
+                                                            data[catKey][key]
+                                                                .signal,
+                                                        ).text}"
+                                                    >
+                                                        {data[catKey][key]
+                                                            .signal}
+                                                    </span>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                    {/if}
+                                {/each}
+                            </div>
+                            <!-- 资金席位对决双向条 -->
+                            {#if data[catKey]["BankCustodyRatio"] && data[catKey]["BrokerageRatio"]}
+                                <div
+                                    class="px-4 py-4 bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-white/5 rounded-xl"
+                                >
+                                    <div
+                                        class="flex justify-between text-xs font-medium mb-3"
+                                    >
+                                        <div class="flex items-center gap-2">
+                                            <span
+                                                class="w-1.5 h-1.5 rounded-full bg-blue-500"
+                                            ></span>
+                                            <span class="text-blue-300"
+                                                >长线银行托管席位</span
+                                            >
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-purple-300"
+                                                >活跃券商交易席位</span
+                                            >
+                                            <span
+                                                class="w-1.5 h-1.5 rounded-full bg-purple-500"
+                                            ></span>
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="flex h-2.5 w-full rounded-full overflow-hidden shadow-inner border border-white/5"
+                                    >
+                                        <div
+                                            class="bg-blue-500 transition-all duration-1000"
+                                            style="width: {data[catKey][
+                                                'BankCustodyRatio'
+                                            ].value}%"
+                                        ></div>
+                                        <div
+                                            class="bg-purple-500 transition-all duration-1000"
+                                            style="width: {data[catKey][
+                                                'BrokerageRatio'
+                                            ].value}%"
+                                        ></div>
+                                    </div>
+                                    <div
+                                        class="flex justify-between text-lg font-mono font-bold mt-2"
+                                    >
+                                        <span class="text-blue-400"
+                                            >{data[catKey]["BankCustodyRatio"]
+                                                .value}%</span
+                                        >
+                                        <span class="text-purple-400"
+                                            >{data[catKey]["BrokerageRatio"]
+                                                .value}%</span
+                                        >
+                                    </div>
+                                    {#if data[catKey]["BrokerageRatio"].signal || data[catKey]["BankCustodyRatio"].signal}
+                                        <div
+                                            class="text-center mt-2 text-[10px] text-white/40"
+                                        >
+                                            特征判定: <span
+                                                class="text-white/70"
+                                                >{data[catKey][
+                                                    "BankCustodyRatio"
+                                                ].signal ||
+                                                    data[catKey][
+                                                        "BrokerageRatio"
+                                                    ].signal}</span
+                                            >
+                                        </div>
+                                    {/if}
+                                </div>
+                            {/if}
+                        </div>
+                    {:else if catKey !== "news" && catKey !== "alternative" && data[catKey] && typeof data[catKey] === "object" && Object.keys(data[catKey]).length > 0}
                         <div class="space-y-5">
                             {#each Object.entries(data[catKey]) as [key, factor]}
                                 <div

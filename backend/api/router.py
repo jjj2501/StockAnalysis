@@ -79,7 +79,8 @@ async def get_history(symbol: str, days: int = 30):
         
         from backend.core.data import DataFetcher
         fetcher = DataFetcher()
-        df = fetcher.get_stock_data(symbol, start_date=start_date, end_date=end_date)
+        clean_symbol, market = fetcher.parse_symbol_market(symbol)
+        df = fetcher.get_stock_data(clean_symbol, start_date=start_date, end_date=end_date, market=market)
         
         if df.empty:
             return {"symbol": symbol, "history": []}
@@ -139,12 +140,13 @@ async def backtest_stock(
         from backend.core.backtester import BacktestEngine, MACDStrategy, RSIStrategy, AIStrategy
         
         fetcher = DataFetcher()
+        clean_symbol, market = fetcher.parse_symbol_market(symbol)
         # 增加一些前置数据用于计算指标
         import datetime
         dt_start = datetime.datetime.strptime(start_date, "%Y%m%d")
         dt_pre = (dt_start - datetime.timedelta(days=60)).strftime("%Y%m%d")
         
-        df = fetcher.get_stock_data(symbol, start_date=dt_pre, end_date=end_date)
+        df = fetcher.get_stock_data(clean_symbol, start_date=dt_pre, end_date=end_date, market=market)
         if df.empty:
             raise HTTPException(status_code=400, detail="No data found for backtest")
             

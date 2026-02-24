@@ -11,9 +11,13 @@
     ];
 
     const settingsItems = [
+        { name: "数据管理", path: "/data", icon: "💽" },
         { name: "系统设置", path: "/settings", icon: "🛠️" },
         { name: "退出登录", path: "/auth/login", icon: "🚪" },
     ];
+
+    // 当前活跃路由
+    $: activePath = $page.url.pathname;
 </script>
 
 <aside

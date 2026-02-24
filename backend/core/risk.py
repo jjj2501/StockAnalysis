@@ -53,9 +53,12 @@ class RiskManager:
             for i, p in enumerate(portfolio):
                 sym = p["symbol"]
                 market = p.get("market", "CN").upper()
-                df = self.fetcher.get_stock_data(sym, start_date=start_date_str, end_date=end_date_str, market=market)
+                clean_sym, parsed_market = self.fetcher.parse_symbol_market(sym)
+                # 补充前端未提供 market 时的推断
+                final_market = parsed_market if market == "CN" and parsed_market != "CN" else market
+                df = self.fetcher.get_stock_data(clean_sym, start_date=start_date_str, end_date=end_date_str, market=final_market)
                 if df.empty:
-                    logger.warning(f"无法获取资产 {market}-{sym} 的历史数据用于风控计算")
+                    logger.warning(f"无法获取资产 {final_market}-{clean_sym} 的历史数据用于风控计算")
                     continue
                 
                 # 设置日期索引以进行对齐
