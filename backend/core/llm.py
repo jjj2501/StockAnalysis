@@ -16,6 +16,11 @@ class BaseLLM(abc.ABC):
     def generate_portfolio_risk_report(self, portfolio: list, risk_metrics: dict) -> str:
         pass
 
+    @abc.abstractmethod
+    def generate_factor_report_stream(self, symbol: str, factors_data: dict):
+        """流式生成包含所有量化数据的深度剖析报告"""
+        pass
+
 class OllamaLLM(BaseLLM):
     def __init__(self, model_name="qwen3:1.7b"):
         # 默认尝试使用 qwen2.5, 用户需自行 pull
@@ -79,6 +84,26 @@ class OllamaLLM(BaseLLM):
         except Exception as e:
             return f"⚠️ **AI 风控引擎暂时离线**: {str(e)}\n\n(但底层量化指标已完成计算并呈现在上方)"
 
+    def generate_factor_report_stream(self, symbol: str, factors_data: dict):
+        prompt = self._build_factor_prompt(symbol, factors_data)
+        try:
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": True # 开启流式机制
+            }
+            with requests.post(self.api_url, json=payload, stream=True, timeout=10) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if line:
+                        chunk = json.loads(line)
+                        if "response" in chunk:
+                            yield chunk["response"]
+        except requests.exceptions.Timeout:
+            yield "⚠️ 抱歉，连接本地大语言模型超时，请检查模型服务是否已启动或正在加载。"
+        except Exception as e:
+            yield f"⚠️ 大语言模型处理异常: {str(e)}"
+
     def _build_backtest_prompt(self, symbol: str, strategy: str, metrics: dict) -> str:
         return f"""
         你是一位资深的量化交易专家。请对股票 {symbol} 使用 {strategy} 策略的回测结果进行深度评价。
@@ -135,6 +160,43 @@ class OllamaLLM(BaseLLM):
         请用 Markdown 格式，语气务必专业、犀利、像个恨铁不成钢的教官，绝不使用机械排比过渡词，字数控制在 500 字以内。
         """
 
+    def _build_factor_prompt(self, symbol: str, data: dict) -> str:
+        # 将结构化的巨量因子摊平为文字
+        tech = data.get("technical", {})
+        fund = data.get("fundamental", {})
+        sent = data.get("sentiment", {})
+        north = data.get("northbound", {})
+        
+        info_str = f"【财务基本面】\n市盈率PE: {fund.get('PE')}, 市净率PB: {fund.get('PB')}, 净资产收益率ROE: {fund.get('ROE')}%\n"
+        info_str += f"市值规模: {fund.get('MarketCap')}\n\n"
+        
+        info_str += f"【短期技术面】\nRSI(相对强弱): {tech.get('RSI')}, 威廉指标(WR): {tech.get('WR')}, ROC(变动率): {tech.get('ROC')}\n"
+        info_str += f"布林带位置: {tech.get('BB')}%\n\n"
+        
+        info_str += f"【市场情绪与资金】\n换手率: {sent.get('Turnover')}%\n"
+        info_str += f"北向资金流动态: 当日买入 {north.get('NetBuy', '未知')}，外资总持股比 {north.get('HoldingRatio', '未知')}\n\n"
+        
+        info_str += f"【新闻舆情监测】\n"
+        news_data = data.get("news", {})
+        info_str += f"舆情情感分: {news_data.get('sentiment_score', '未知')} (满分100，越高越看多)\n"
+        
+        # 提取AI自己上一步生成的独立预测作为参考意见之一（如有的情况）
+        ai_pred = data.get("ai_prediction")
+        if ai_pred:
+            info_str += f"\n注: 其他深度学习AI子模型(LSTM等)对该股给出的独立倾向是: {ai_pred}\n"
+        
+        return f"""
+        你是一位实战经验丰富且极其敏锐的多空对冲基金经理。请基于以下我摘录的关于股票代码 {symbol} 的全方位综合量化雷达因子数据，直接对其当前的投资价值给出一个总结性的“人话”判断。
+        
+        {info_str}
+        
+        任务要求：
+        1. 必须一针见血，不要复述数据，只需回答数据背后暴露的本质问题（如：跌出黄金坑、明显高估有杀跌风险、资金正在撤离等）。
+        2. 结合基本面的长逻辑与技术面的短信号，找出它们的共振点或矛盾点。
+        3. 直接给出一到两句具体的交易行动命令建议。
+        4. 请控制在 250 字以内，字字珠玑，格式采用Markdown。
+        """
+
     def _build_prompt(self, symbol: str, data: dict) -> str:
         # 构建提示词
         return f"""
@@ -187,6 +249,13 @@ class ValidationLLM(BaseLLM):
         
         *系统级提示：请在本地 Olllama 服务启动，以获取完整而深度的真实风险解读。*
         """
+
+    def generate_factor_report_stream(self, symbol: str, factors_data: dict):
+        import time
+        mock_text = f"【模拟数据：{symbol}因子投资兵推】\n\n系统目前未接入 Ollama 模型。根据传参的基本面 PE {factors_data.get('fundamental',{}).get('PE')} 以及 RSI 指数 {factors_data.get('technical',{}).get('RSI')}，此股票短期表现出特定的量化特征。\n\n**建议**：结合自身风险偏好继续观察。（请接入真实大模型环境以获取深度推演）"
+        for char in mock_text:
+            yield char
+            time.sleep(0.01)
 
 def get_llm_client(provider="ollama", model_name="qwen3:1.7b"):
     """

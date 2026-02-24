@@ -70,8 +70,9 @@ class StockEngine:
             if self.gpu_manager.is_gpu_available():
                 print(f"使用GPU加速: {self.gpu_manager.gpu_info.get('device_name', 'Unknown')}")
             
-            # 获取数据
-            df = self.data_fetcher.get_stock_data(symbol)
+            # 获取数据并解析市场后缀
+            clean_symbol, market = self.data_fetcher.parse_symbol_market(symbol)
+            df = self.data_fetcher.get_stock_data(clean_symbol, market=market)
             df = self.data_fetcher.add_technical_indicators(df)
             X, y, scaler = self.data_fetcher.prepare_data_for_training(df, seq_length=self.seq_length)
             
@@ -267,7 +268,8 @@ class StockEngine:
         model.eval()
         
         await update_p(60, "正在获取最近交易数据...")
-        X_recent, df = self.data_fetcher.get_recent_data(symbol, seq_length=self.seq_length)
+        clean_symbol, market = self.data_fetcher.parse_symbol_market(symbol)
+        X_recent, df = self.data_fetcher.get_recent_data(clean_symbol, market=market, seq_length=self.seq_length)
         
         if len(X_recent) == 0:
             return {"error": "Insufficient data"}

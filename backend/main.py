@@ -51,8 +51,23 @@ app.add_middleware(AuditMiddleware)
 app.include_router(auth_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(main_router, prefix="/api")
-app.include_router(data_router, prefix="/api")
+app.include_router(data_router, prefix="/api/data", tags=["Market Data Management"])
 app.include_router(gpu_router, prefix="/api")
+
+from backend.core.scheduler import scheduler
+import asyncio
+
+# === 生命周期管理 ===
+@app.on_event("startup")
+async def startup_event():
+    # 启动后台守护任务更新数据
+    asyncio.create_task(scheduler.start_background_loop())
+    logging.info("AlphaPulse 后台数据刷新守护进程已启动.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.stop()
+    logging.info("AlphaPulse 后台数据刷新守护进程已关闭.")
 
 # 前端托管
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -64,4 +79,4 @@ if os.path.exists(static_dir):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -46,12 +46,13 @@ class DataManager:
         results = []
         for symbol in symbols:
             # 检查本地缓存状态
-            cache_path = self.fetcher._get_cache_path(symbol)
+            clean_sym, market = self.fetcher.parse_symbol_market(symbol)
+            cache_path = self.fetcher._get_cache_path(clean_sym, market)
             status = "未同步"
             last_date = "--"
             
             if cache_path.exists():
-                df = self.fetcher._load_cache(symbol)
+                df = self.fetcher._load_cache(clean_sym, market)
                 if df is not None and not df.empty:
                     last_date = df['date'].max().strftime('%Y-%m-%d')
                     status = "已缓存"
@@ -87,7 +88,8 @@ class DataManager:
             # 使用 DataFetcher 的 get_stock_data 逻辑进行增量更新
             # 默认拉取所有可用数据到今天
             end_date = datetime.datetime.now().strftime("%Y%m%d")
-            df = self.fetcher.get_stock_data(symbol, end_date=end_date)
+            clean_sym, market = self.fetcher.parse_symbol_market(symbol)
+            df = self.fetcher.get_stock_data(clean_sym, end_date=end_date, market=market)
             return not df.empty
         except Exception as e:
             logger.error(f"同步股票 {symbol} 失败: {e}")

@@ -141,7 +141,8 @@ async def get_history(
         
         from backend.core.data import DataFetcher
         fetcher = DataFetcher()
-        df = fetcher.get_stock_data(symbol, start_date=start_date, end_date=end_date)
+        clean_symbol, market = fetcher.parse_symbol_market(symbol)
+        df = fetcher.get_stock_data(clean_symbol, start_date=start_date, end_date=end_date, market=market)
         
         if df.empty:
             return {"symbol": symbol, "history": []}
@@ -240,6 +241,41 @@ async def get_factors(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/factors/{symbol}/analyze")
+async def analyze_factors_stream(
+    symbol: str,
+    cat: Optional[str] = None
+):
+    """
+    量化因子大模型流式诊断
+    接收 symbol 和分类信息，获取最新因子雷达图，交由 LLM 进行打字机式(SSE)诊断分析推流
+    """
+    try:
+        from backend.core.data import DataFetcher
+        fetcher = DataFetcher()
+        categories = cat.split(',') if cat else None
+        
+        # 拉取因子数据
+        factors_data = fetcher.get_comprehensive_factors(symbol, categories=categories)
+        if "error" in factors_data:
+            def error_streamer():
+                yield f"data: ⚠️ 无法获取因子数据: {factors_data['error']}\n\n"
+            return StreamingResponse(error_streamer(), media_type="text/event-stream")
+            
+        import json
+        def streamer():
+            for chunk in llm_client.generate_factor_report_stream(symbol, factors_data):
+                # 遵循 SSE 标准格式，用 JSON 包装能够安全传递换行等特殊符号，防范前端错误累加空行
+                payload = json.dumps({"text": str(chunk)})
+                yield f"data: {payload}\n\n"
+        
+        return StreamingResponse(streamer(), media_type="text/event-stream")
+        
+    except Exception as e:
+        logger.error(f"Factors analyze error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/backtest/{symbol}")
 async def backtest_stock(
     symbol: str,
@@ -259,13 +295,17 @@ async def backtest_stock(
         from backend.core.backtester import BacktestEngine, MACDStrategy, RSIStrategy, AIStrategy
         
         fetcher = DataFetcher()
+        # 智能解析清洗符号后缀与市场 (解决美股/港股识别问题)
+        clean_symbol, market = fetcher.parse_symbol_market(symbol)
+        
         # 增加一些前置数据用于计算指标
         import datetime
         dt_start = datetime.datetime.strptime(start_date, "%Y%m%d")
         dt_pre = (dt_start - datetime.timedelta(days=60)).strftime("%Y%m%d")
         
-        df = fetcher.get_stock_data(symbol, start_date=dt_pre, end_date=end_date)
+        df = fetcher.get_stock_data(clean_symbol, start_date=dt_pre, end_date=end_date, market=market)
         if df.empty:
+            logger.error(f"Backtest engine failed to retrieve data for {symbol} ({clean_symbol}/{market}) from {dt_pre} to {end_date}")
             raise HTTPException(status_code=400, detail="No data found for backtest")
         
         df = fetcher.add_technical_indicators(df)
