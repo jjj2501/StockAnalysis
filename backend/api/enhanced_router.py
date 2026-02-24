@@ -25,6 +25,33 @@ llm_client = get_llm_client(provider=LLM_PROVIDER, model_name=LLM_MODEL)
 logger = logging.getLogger(__name__)
 
 
+from pydantic import BaseModel
+
+class LLMConfig(BaseModel):
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+
+@router.get("/config/llm")
+async def get_llm_config():
+    """获取当前大模型的外部配置"""
+    from backend.config import settings
+    return {
+        "api_key": settings.OPENAI_API_KEY or "",
+        "base_url": settings.OPENAI_BASE_URL or ""
+    }
+
+@router.post("/config/llm")
+async def update_llm_config(config: LLMConfig):
+    """更新大模型 API 密钥与网关并在后台文件持久化"""
+    from backend.config import settings
+    
+    # 存入缓存文件并刷新当前运行时全局参数
+    settings.save_llm_cache(
+        api_key=config.api_key or "",
+        base_url=config.base_url or ""
+    )
+    return {"message": "大模型网关设定已生效并持久化"}
+
 @router.get("/progress/{task_id}")
 async def get_progress(task_id: str):
     """
@@ -244,7 +271,9 @@ async def get_factors(
 @router.get("/factors/{symbol}/analyze")
 async def analyze_factors_stream(
     symbol: str,
-    cat: Optional[str] = None
+    cat: Optional[str] = None,
+    provider: str = "ollama",
+    model: str = "qwen3:1.7b"
 ):
     """
     量化因子大模型流式诊断
@@ -263,8 +292,10 @@ async def analyze_factors_stream(
             return StreamingResponse(error_streamer(), media_type="text/event-stream")
             
         import json
+        from backend.core.llm import get_llm_client
         def streamer():
-            for chunk in llm_client.generate_factor_report_stream(symbol, factors_data):
+            client = get_llm_client(provider=provider, model_name=model)
+            for chunk in client.generate_factor_report_stream(symbol, factors_data):
                 # 遵循 SSE 标准格式，用 JSON 包装能够安全传递换行等特殊符号，防范前端错误累加空行
                 payload = json.dumps({"text": str(chunk)})
                 yield f"data: {payload}\n\n"
@@ -273,6 +304,21 @@ async def analyze_factors_stream(
         
     except Exception as e:
         logger.error(f"Factors analyze error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agents/{symbol}/stream")
+async def multi_agent_safari_stream(symbol: str, provider: str = "ollama", model: str = "qwen3:1.7b"):
+    """
+    多智能体 (Multi-Agent) 联合诊断流式接口。
+    负责拉拔数据并在流中吐出宏观分析师、量化研究员等角色的对话式弹珠。
+    """
+    try:
+        from backend.core.agents.orch import AgentOrchestrator
+        orch = AgentOrchestrator(provider=provider, model_name=model)
+        # FastAPI 会自动将同步 Generator 交由线程池执行，不会阻塞主事件循环
+        return StreamingResponse(orch.run_safari(symbol), media_type="text/event-stream")
+    except Exception as e:
+        logger.error(f"Multi-Agent Safari error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -366,6 +412,8 @@ class BacktestAnalysisRequest(BaseModel):
     symbol: str
     strategy: str
     summary: dict
+    provider: str = "ollama"
+    model: str = "qwen3:1.7b"
 
 
 @router.post("/backtest/analyze")
@@ -379,7 +427,10 @@ async def analyze_backtest_results(
     基于回测结果生成 AI 诊断报告 (按需触发)
     """
     try:
-        report = llm_client.generate_backtest_report(
+        from backend.core.llm import get_llm_client
+        client = get_llm_client(provider=request.provider, model_name=request.model)
+        
+        report = client.generate_backtest_report(
             request.symbol,
             request.strategy,
             request.summary

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api"
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     
+    # 大模型与外部网关配置
+    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
+    OPENAI_BASE_URL: Optional[str] = os.getenv("OPENAI_BASE_URL")
+    
     # 邮箱配置（用于密码重置）
     SMTP_HOST: Optional[str] = os.getenv("SMTP_HOST")
     SMTP_PORT: Optional[int] = int(os.getenv("SMTP_PORT", "587"))
@@ -53,5 +57,38 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
 
+    def load_llm_cache(self):
+        """挂载本地 JSON 配置（覆盖通过 .env 读取的基础参数）"""
+        cache_path = os.path.join(os.path.dirname(__file__), "data", "llm_config.json")
+        if os.path.exists(cache_path):
+            try:
+                import json
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("OPENAI_API_KEY"):
+                        self.OPENAI_API_KEY = data["OPENAI_API_KEY"]
+                    if data.get("OPENAI_BASE_URL"):
+                        self.OPENAI_BASE_URL = data["OPENAI_BASE_URL"]
+            except Exception as e:
+                print(f"Failed to load llm config cache: {e}")
+
+    def save_llm_cache(self, api_key: str, base_url: str):
+        """从前台接收指令并覆写硬盘缓存"""
+        self.OPENAI_API_KEY = api_key
+        self.OPENAI_BASE_URL = base_url
+        cache_dir = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, "llm_config.json")
+        try:
+            import json
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "OPENAI_API_KEY": api_key,
+                    "OPENAI_BASE_URL": base_url
+                }, f)
+        except Exception as e:
+            print(f"Failed to save llm config cache: {e}")
+
 
 settings = Settings()
+settings.load_llm_cache()

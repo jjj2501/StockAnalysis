@@ -1,4 +1,5 @@
 <script>
+    import { onMount } from "svelte";
     import Card from "$lib/components/Card.svelte";
 
     // 因子分类元数据
@@ -22,6 +23,11 @@
             label: "另类因子",
             icon: "🕵️",
             desc: "外资机构席位分解与另类分析",
+        },
+        macro: {
+            label: "宏观政策",
+            icon: "🏛️",
+            desc: "央行决议与高频宏观经济数据",
         },
         news: {
             label: "新闻舆情",
@@ -50,6 +56,12 @@
         NetBuy: "当日增持净额",
         BankCustodyRatio: "银行配置席位占比",
         BrokerageRatio: "券商交易席位占比",
+        China_LPR_1Y: "LPR 1年期",
+        China_M2_Yoy: "M2 同比增速",
+        China_PMI: "官方制造业 PMI",
+        US_Non_Farm: "新增非农就业",
+        US_CPI_Yoy: "CPI 消费价格同比",
+        US_Initial_Jobless: "初请失业金人数",
     };
 
     // 信号颜色映射
@@ -83,9 +95,24 @@
         交易型热钱偏多: { bg: "bg-rose-500/15", text: "text-rose-400" },
         连续买入: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
         资金流出: { bg: "bg-rose-500/15", text: "text-rose-400" },
-        偏多: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
         偏空: { bg: "bg-rose-500/15", text: "text-rose-400" },
         暂无数据: { bg: "bg-slate-500/15", text: "text-slate-400" },
+        宽松落地: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+        加息紧缩: { bg: "bg-rose-500/15", text: "text-rose-400" },
+        按兵不动: { bg: "bg-slate-500/15", text: "text-slate-400" },
+        流动性充裕: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+        流动性收紧: { bg: "bg-rose-500/15", text: "text-rose-400" },
+        扩张: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+        收缩: { bg: "bg-rose-500/15", text: "text-rose-400" },
+        就业稳健: { bg: "bg-blue-500/15", text: "text-blue-400" },
+        "就业强劲/降息承压": { bg: "bg-amber-500/15", text: "text-amber-400" },
+        "就业降温/利好降息": {
+            bg: "bg-emerald-500/15",
+            text: "text-emerald-400",
+        },
+        通胀降温: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+        通胀顽固: { bg: "bg-rose-500/15", text: "text-rose-400" },
+        衰退交易: { bg: "bg-rose-500/15", text: "text-rose-400" },
     };
 
     let symbol = $state("600519");
@@ -93,6 +120,16 @@
     /** @type {any} */
     let data = $state(null);
     let error = $state("");
+
+    // 全局大模型配置
+    let llmProvider = "ollama";
+    let modelName = "qwen3:1.7b";
+
+    onMount(() => {
+        llmProvider = localStorage.getItem("llmProvider") || "ollama";
+        modelName = localStorage.getItem("modelName") || "qwen3:1.7b";
+        loadFactors(); // 如果有需要页面加载就刷新可以放这（视原有逻辑而定）
+    });
 
     // AI 预测相关状态
     let aiLoading = $state(false);
@@ -138,7 +175,10 @@
         llmReport = "";
         llmError = "";
 
-        const eventSource = new EventSource(`/api/factors/${symbol}/analyze`);
+        // 透传当前选择的大模型提供商与底座模型
+        const eventSource = new EventSource(
+            `/api/factors/${symbol}/analyze?provider=${llmProvider}&model=${modelName}`,
+        );
 
         eventSource.onmessage = (event) => {
             try {
@@ -228,6 +268,13 @@
         if (key === "ROE") return Math.min(val * 3, 100);
         if (key === "HoldingRatio") return Math.min(val * 5, 100);
         if (key === "ROC") return Math.min(50 + val * 3, 100);
+        if (key === "China_LPR_1Y") return Math.min(val * 20, 100);
+        if (key === "China_M2_Yoy") return Math.min(val * 8, 100);
+        if (key === "China_PMI") return Math.min(val * 1.5, 100);
+        if (key === "US_Non_Farm") return Math.min(Math.abs(val) * 3, 100);
+        if (key === "US_CPI_Yoy") return Math.min(Math.abs(val) * 15, 100);
+        if (key === "US_Initial_Jobless")
+            return Math.min(Math.abs(val) / 3, 100);
         return 50;
     }
 

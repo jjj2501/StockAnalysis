@@ -19,19 +19,31 @@
     let numLayers = $state(2);
     let seqLength = $state(60);
 
+    // AI 模型配置
+    let llmProvider = $state("ollama");
+    let modelName = $state("qwen3:1.7b");
+    let llmApiKey = $state("");
+    let llmBaseUrl = $state("");
+
     onMount(async () => {
+        // 从浏览器本地恢复 LLM 设置偏好
+        llmProvider = localStorage.getItem("llmProvider") || "ollama";
+        modelName = localStorage.getItem("modelName") || "qwen3:1.7b";
+
         await loadDeviceInfo();
     });
 
     async function loadDeviceInfo() {
         loading = true;
         try {
-            const [statusRes, configRes] = await Promise.all([
+            const [statusRes, configRes, llmRes] = await Promise.all([
                 fetch("/api/gpu/status"),
                 fetch("/api/gpu/config/current"),
+                fetch("/api/config/llm"),
             ]);
             gpuStatus = await statusRes.json();
             config = await configRes.json();
+            const llmConfig = await llmRes.json();
 
             // 用后端真实配置填充表单
             if (config) {
@@ -41,6 +53,10 @@
                 hiddenDim = config.model_hidden_dim ?? 64;
                 numLayers = config.model_num_layers ?? 2;
                 seqLength = config.sequence_length ?? 60;
+            }
+            if (llmConfig) {
+                llmApiKey = llmConfig.api_key || "";
+                llmBaseUrl = llmConfig.base_url || "";
             }
         } catch (/** @type {any} */ e) {
             console.error("加载设备信息失败:", e);
@@ -52,20 +68,35 @@
     async function saveConfig() {
         saving = true;
         saveMsg = "";
+
+        // 保存前端本地偏好
+        localStorage.setItem("llmProvider", llmProvider);
+        localStorage.setItem("modelName", modelName);
+
         try {
-            const res = await fetch("/api/gpu/config/update", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    batch_size: batchSize,
-                    epochs: epochs,
-                    learning_rate: learningRate,
-                    model_hidden_dim: hiddenDim,
-                    model_num_layers: numLayers,
-                    sequence_length: seqLength,
+            const [res, llmRes] = await Promise.all([
+                fetch("/api/gpu/config/update", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        batch_size: batchSize,
+                        epochs: epochs,
+                        learning_rate: learningRate,
+                        model_hidden_dim: hiddenDim,
+                        model_num_layers: numLayers,
+                        sequence_length: seqLength,
+                    }),
                 }),
-            });
-            if (res.ok) {
+                fetch("/api/config/llm", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        api_key: llmApiKey,
+                        base_url: llmBaseUrl,
+                    }),
+                }),
+            ]);
+            if (res.ok && llmRes.ok) {
                 saveMsg = "✅ 配置已保存成功";
             } else {
                 saveMsg = "❌ 保存失败";
@@ -151,15 +182,14 @@
                     >LLM 提供商</label
                 >
                 <select
+                    bind:value={llmProvider}
                     class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500/50 transition-all appearance-none"
                 >
                     <option value="ollama" class="bg-surface-900"
                         >Ollama (本地)</option
                     >
-                    <option value="deepseek" class="bg-surface-900"
-                        >DeepSeek API</option
-                    >
-                    <option value="openai" class="bg-surface-900">OpenAI</option
+                    <option value="openai" class="bg-surface-900"
+                        >OpenAI 兼容 (例如 DeepSeek 等外部 API)</option
                     >
                 </select>
             </div>
@@ -169,10 +199,42 @@
                 >
                 <input
                     type="text"
-                    value="qwen3:1.7b"
+                    bind:value={modelName}
                     class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500/50 transition-all"
                 />
             </div>
+            {#if llmProvider === "openai"}
+                <div
+                    class="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5 mt-2 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20"
+                >
+                    <div>
+                        <label
+                            class="block text-xs text-emerald-400 mb-1.5 font-medium flex items-center gap-1"
+                        >
+                            <span>🔑</span> OpenAI API Key (密钥)
+                        </label>
+                        <input
+                            type="password"
+                            bind:value={llmApiKey}
+                            placeholder="sk-..."
+                            class="w-full bg-[#0a0c10] border border-emerald-500/30 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-emerald-500/80 transition-all"
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="block text-xs text-emerald-400 mb-1.5 font-medium flex items-center gap-1"
+                        >
+                            <span>🌐</span> Base URL (中转站/DeepSeek)
+                        </label>
+                        <input
+                            type="text"
+                            bind:value={llmBaseUrl}
+                            placeholder="例如: https://api.deepseek.com/v1"
+                            class="w-full bg-[#0a0c10] border border-emerald-500/30 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-emerald-500/80 transition-all"
+                        />
+                    </div>
+                </div>
+            {/if}
         </div>
     </Card>
 

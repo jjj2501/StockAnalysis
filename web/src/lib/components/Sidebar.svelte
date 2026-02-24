@@ -5,6 +5,7 @@
         { name: "首页概览", path: "/", icon: "📊" },
         { name: "因子分析", path: "/factors", icon: "🔍" },
         { name: "量化回测", path: "/backtest", icon: "⚙️" },
+        { name: "多智能体作战室", path: "/agents", icon: "🤖" },
         { name: "模型训练", path: "/training", icon: "🧠" },
         { name: "投资组合", path: "/portfolio", icon: "💼" },
         { name: "智能预警", path: "/watchlist", icon: "🔔" },

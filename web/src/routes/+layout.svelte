@@ -13,12 +13,14 @@
         "/portfolio": "投资组合",
         "/watchlist": "智能预警",
         "/settings": "系统设置",
+        "/agents": "多智能体作战室",
+        "/data": "底层数据中心",
     };
 
     // 根据当前路径获取页面标题
     /** @type {Record<string, string>} */
     const _titles = pageTitles;
-    let currentTitle = $derived(_titles[$page.url.pathname] || "AlphaPulse");
+    let currentTitle = $derived(_titles[$page.url.pathname] || "控制台");
 
     // 判断是否为认证页面（不显示侧边栏和顶栏）
     let isAuthPage = $derived($page.url.pathname.startsWith("/auth"));
