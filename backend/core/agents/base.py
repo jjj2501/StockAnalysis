@@ -2,7 +2,7 @@ import json
 import logging
 from typing import List, Dict, Any, Generator
 from backend.core.llm import OllamaLLM
-from backend.core.agents.tools import SYSTEM_TOOLS, TOOL_REGISTRY
+from backend.core.agents.tools import mcp_tools, AVAILABLE_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,8 @@ class ReActAgent:
         self.llm = llm
         self.max_turns = max_turns
         # 内置系统级可用抓手
-        self.tools = SYSTEM_TOOLS
+        self.tools = mcp_tools
+        self.tool_functions = AVAILABLE_TOOLS
 
     def run(self, context_messages: List[Dict[str, str]], symbol: str) -> Generator[Dict[str, Any], None, None]:
         """

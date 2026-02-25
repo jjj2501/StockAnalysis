@@ -52,6 +52,39 @@ async def update_llm_config(config: LLMConfig):
     )
     return {"message": "大模型网关设定已生效并持久化"}
 
+class LLMTestConfig(BaseModel):
+    provider: str
+    model_name: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+
+@router.post("/config/llm/test")
+async def test_llm_connection(config: LLMTestConfig):
+    """测试给定的大模型配置连通性"""
+    try:
+        from backend.core.llm import get_llm_client
+        client = get_llm_client(
+            provider=config.provider, 
+            model_name=config.model_name, 
+            api_key=config.api_key, 
+            base_url=config.base_url
+        )
+        
+        # 针对大模型发送极简握手
+        messages = [{"role": "user", "content": "Hello! Please reply with exactly one word: 'OK'."}]
+        response = client.chat_with_tools(messages=messages)
+        
+        if response and response.get("content"):
+            reply = response.get('content', '').strip()
+            # 由于可能出现错误捕获被放成 fallback [外部大脑短路：...]
+            if "[外部大脑短路" in reply or "[内部通信总线崩塌" in reply:
+                return {"status": "error", "message": f"连接发生异常或超时: {reply}"}
+            return {"status": "success", "message": f"连接成功！(回复: {reply})"}
+        else:
+            return {"status": "error", "message": "连接成功但未获得有效响应内容"}
+    except Exception as e:
+        return {"status": "error", "message": f"连接失败: {str(e)}"}
+
 @router.get("/progress/{task_id}")
 async def get_progress(task_id: str):
     """

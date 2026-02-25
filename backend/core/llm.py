@@ -301,14 +301,14 @@ class ValidationLLM(BaseLLM):
             yield char
             time.sleep(0.01)
 
-def get_llm_client(provider="ollama", model_name="qwen3:1.7b"):
+def get_llm_client(provider="ollama", model_name="qwen3:1.7b", api_key=None, base_url=None):
     """
     工厂函数获取 LLM 客户端
     """
     if provider == "ollama":
         return OllamaLLM(model_name=model_name)
     elif provider == "openai":
-        return OpenAILLM(model_name=model_name)
+        return OpenAILLM(model_name=model_name, api_key=api_key, base_url=base_url)
     elif provider == "validation":
         return ValidationLLM()
     else:
@@ -319,23 +319,23 @@ class OpenAILLM(BaseLLM):
     """
     OpenAI 官方兼容网关（也适用于 DeepSeek, 零一万物大模型等支持标准 /v1/chat/completions 的外部 API）
     """
-    def __init__(self, model_name="gpt-4o"):
+    def __init__(self, model_name="gpt-4o", api_key=None, base_url=None):
         from backend.config import settings
         from openai import OpenAI
         self.model_name = model_name
         
-        # 通过环境变量初始化大模型网络实例
-        base_url = settings.OPENAI_BASE_URL
-        api_key = settings.OPENAI_API_KEY
+        # 优先使用传入的临时参数（用于前端连通性测试），否则 fallback 到配置环境变量
+        actual_base_url = base_url if base_url is not None else settings.OPENAI_BASE_URL
+        actual_api_key = api_key if api_key is not None else settings.OPENAI_API_KEY
         
-        if not api_key:
+        if not actual_api_key:
             raise ValueError("未在环境配置(.env)中找到 OPENAI_API_KEY 或对应的大模型秘钥。请先设置。")
             
         # 若有指定代理网流则加载
-        if base_url:
-            self.client = OpenAI(api_key=api_key, base_url=base_url)
+        if actual_base_url:
+            self.client = OpenAI(api_key=actual_api_key, base_url=actual_base_url)
         else:
-            self.client = OpenAI(api_key=api_key)
+            self.client = OpenAI(api_key=actual_api_key)
 
     def generate_report(self, symbol: str, data: dict) -> str:
         prompt = self._build_prompt(symbol, data) # 复用既有提示词

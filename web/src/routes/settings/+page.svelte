@@ -10,6 +10,8 @@
     let loading = $state(true);
     let saving = $state(false);
     let saveMsg = $state("");
+    let testingConnection = $state(false);
+    let testMsg = $state("");
 
     // 可编辑参数
     let batchSize = $state(32);
@@ -62,6 +64,33 @@
             console.error("加载设备信息失败:", e);
         } finally {
             loading = false;
+        }
+    }
+
+    async function testConnection() {
+        testingConnection = true;
+        testMsg = "⏳ 测试中...";
+        try {
+            const res = await fetch("/api/config/llm/test", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    provider: llmProvider,
+                    model_name: modelName,
+                    api_key: llmApiKey,
+                    base_url: llmBaseUrl,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok && data.status === "success") {
+                testMsg = "✅ " + data.message;
+            } else {
+                testMsg = "❌ " + (data.message || "测试失败");
+            }
+        } catch (/** @type {any} */ e) {
+            testMsg = "❌ 网络错误: " + e.message;
+        } finally {
+            testingConnection = false;
         }
     }
 
@@ -235,6 +264,28 @@
                     </div>
                 </div>
             {/if}
+        </div>
+
+        <!-- 测试连接区块 -->
+        <div
+            class="mt-6 flex flex-col sm:flex-row items-center justify-between border-t border-white/5 pt-5"
+        >
+            <div
+                class="text-sm {testMsg.includes('✅')
+                    ? 'text-emerald-400'
+                    : testMsg.includes('❌')
+                      ? 'text-rose-400'
+                      : 'text-white/40'}"
+            >
+                {testMsg || "在保存前可以先测试模型服务是否连通"}
+            </div>
+            <button
+                onclick={testConnection}
+                disabled={testingConnection || loading}
+                class="mt-3 sm:mt-0 px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 border border-white/10 rounded-xl text-sm font-medium text-white transition-all focus:outline-none"
+            >
+                {testingConnection ? "🔌 连接中..." : "⚡ 测试连接"}
+            </button>
         </div>
     </Card>
 
