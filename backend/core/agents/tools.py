@@ -77,7 +77,7 @@ def get_news_sentiment(symbol: str) -> str:
         res = _shared_fetcher._fetch_news_sentiment(clean_symbol)
         if not res and market == "US":
              return json.dumps({"news": {"notice": "海外新闻源暂受限，请基于已有技术形态定夺。"}}, ensure_ascii=False)
-        return json.dumps({"news": res} if res else {"news": {"notice": "新闻舆情数据获取受阻，请根据市场常识推演并禁止重试获取。"}}, ensure_ascii=False)
+        return json.dumps(res if res else {"news": {"notice": "新闻舆情数据获取受阻，请根据市场常识推演并禁止重试获取。"}}, ensure_ascii=False)
     except Exception as e:
         logger.error(f"Error fetching news for {symbol}: {e}")
         return json.dumps({"news": {"notice": "新闻源暂不可用，请根据市场常识推演并禁止重试。"}}, ensure_ascii=False)

@@ -17,10 +17,8 @@ from backend.auth.schemas import AuditLogCreate
 router = APIRouter()
 engine = StockEngine()
 
-# LLM 配置
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:1.7b")
-llm_client = get_llm_client(provider=LLM_PROVIDER, model_name=LLM_MODEL)
+# LLM 动态配置
+# 后续所有接口均应在请求时通过 get_llm_client 动态获取并加载 settings 变量，不再使用全局对象
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +150,15 @@ async def analyze_stock(
         await progress_manager.update(symbol, 95, "正在通过人工智能生成深度分析报告...")
         
         # 3. 调用 LLM 生成报告
-        report = llm_client.generate_report(symbol, data_result)
+        from backend.config import settings
+        from backend.core.llm import get_llm_client
+        act_provider = getattr(settings, "LLM_PROVIDER", "ollama")
+        act_model = getattr(settings, "LLM_MODEL", "qwen3:1.7b")
+        if act_provider == "ollama" and getattr(settings, "OPENAI_API_KEY", None):
+             pass
+        
+        client = get_llm_client(provider=act_provider, model_name=act_model)
+        report = client.generate_report(symbol, data_result)
         
         await progress_manager.update(symbol, 100, "分析完成")
         
@@ -305,8 +311,8 @@ async def get_factors(
 async def analyze_factors_stream(
     symbol: str,
     cat: Optional[str] = None,
-    provider: str = "ollama",
-    model: str = "qwen3:1.7b"
+    provider: Optional[str] = None,
+    model: Optional[str] = None
 ):
     """
     量化因子大模型流式诊断
@@ -326,8 +332,18 @@ async def analyze_factors_stream(
             
         import json
         from backend.core.llm import get_llm_client
+        from backend.config import settings
+        
+        # 智能 fallback 回退逻辑
+        act_provider = provider if provider and provider != "null" else getattr(settings, "LLM_PROVIDER", "ollama")
+        act_model = model if model and model != "null" else getattr(settings, "LLM_MODEL", "qwen3:1.7b")
+        # 特别兼容：若配置了 OPENAI_API_KEY 但没设置 default provider 为 openai 的容错
+        if act_provider == "ollama" and getattr(settings, "OPENAI_API_KEY", None):
+             # 用户明显填了 key 却没改默认，自动帮他切过去 (防止一直由于连不上 ollama 而崩溃)
+             pass # 为了不那么魔改，这里暂不强制截获，只做普通回退
+             
         def streamer():
-            client = get_llm_client(provider=provider, model_name=model)
+            client = get_llm_client(provider=act_provider, model_name=act_model)
             for chunk in client.generate_factor_report_stream(symbol, factors_data):
                 # 遵循 SSE 标准格式，用 JSON 包装能够安全传递换行等特殊符号，防范前端错误累加空行
                 payload = json.dumps({"text": str(chunk)})
@@ -340,14 +356,19 @@ async def analyze_factors_stream(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/agents/{symbol}/stream")
-async def multi_agent_safari_stream(symbol: str, provider: str = "ollama", model: str = "qwen3:1.7b"):
+async def multi_agent_safari_stream(symbol: str, provider: Optional[str] = None, model: Optional[str] = None):
     """
     多智能体 (Multi-Agent) 联合诊断流式接口。
     负责拉拔数据并在流中吐出宏观分析师、量化研究员等角色的对话式弹珠。
     """
     try:
         from backend.core.agents.orch import AgentOrchestrator
-        orch = AgentOrchestrator(provider=provider, model_name=model)
+        from backend.config import settings
+        
+        act_provider = provider if provider and provider != "null" else getattr(settings, "LLM_PROVIDER", "ollama")
+        act_model = model if model and model != "null" else getattr(settings, "LLM_MODEL", "qwen3:1.7b")
+        
+        orch = AgentOrchestrator(provider=act_provider, model_name=act_model)
         # FastAPI 会自动将同步 Generator 交由线程池执行，不会阻塞主事件循环
         return StreamingResponse(orch.run_safari(symbol), media_type="text/event-stream")
     except Exception as e:
@@ -445,8 +466,8 @@ class BacktestAnalysisRequest(BaseModel):
     symbol: str
     strategy: str
     summary: dict
-    provider: str = "ollama"
-    model: str = "qwen3:1.7b"
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 
 @router.post("/backtest/analyze")
@@ -461,7 +482,12 @@ async def analyze_backtest_results(
     """
     try:
         from backend.core.llm import get_llm_client
-        client = get_llm_client(provider=request.provider, model_name=request.model)
+        from backend.config import settings
+        
+        act_provider = request.provider if request.provider and request.provider != "null" else getattr(settings, "LLM_PROVIDER", "ollama")
+        act_model = request.model if request.model and request.model != "null" else getattr(settings, "LLM_MODEL", "qwen3:1.7b")
+        
+        client = get_llm_client(provider=act_provider, model_name=act_model)
         
         report = client.generate_backtest_report(
             request.symbol,
@@ -578,8 +604,16 @@ async def calculate_portfolio_risk(
         if "error" in risk_result:
             raise HTTPException(status_code=400, detail=risk_result["error"])
         
+        from backend.core.llm import get_llm_client
+        from backend.config import settings
+        act_provider = getattr(settings, "LLM_PROVIDER", "ollama")
+        act_model = getattr(settings, "LLM_MODEL", "qwen3:1.7b")
+        if act_provider == "ollama" and getattr(settings, "OPENAI_API_KEY", None):
+             pass
+        
         # 2. 调用 LLM 生成分析报告
-        report = llm_client.generate_portfolio_risk_report(portfolio_data, risk_result)
+        client = get_llm_client(provider=act_provider, model_name=act_model)
+        report = client.generate_portfolio_risk_report(portfolio_data, risk_result)
         
         # 将生成的报告存入结果中
         risk_result["ai_report"] = report

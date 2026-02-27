@@ -666,10 +666,39 @@ class DataFetcher:
             logger.warning(f"获取基本面数据失败: {e}")
             return {}
 
-    def _fetch_macro(self, market: str) -> dict:
-        """获取宏观政策与经济数据"""
+    def get_macro_data(self, market: str = "CN") -> dict:
+        """
+        获取全局层面的宏观政策与经济数据，内置按日维度的全局缓存
+        不再因为每个个股重复查询而触发限流。
+        :param market: 市场枚举 (CN 或 US 等)
+        """
+        import json
+        import datetime
+        from pathlib import Path
+        
+        main_market = "CN" if market == "CN" else "US" # 将 HK 等非A股映射回美国宏观大盘
+        
+        macro_dir = self.cache_dir / "macro"
+        macro_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = macro_dir / f"macro_{main_market}.json"
+        
+        today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        
+        # --- 1. 读取本地全局大盘缓存储存 ---
+        if cache_path.exists():
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    cached = json.load(f)
+                if cached.get("update_date") == today_str and "data" in cached:
+                    logger.info(f"命中全局宏观经济缓存: {main_market}")
+                    return cached["data"]
+            except Exception as e:
+                logger.warning(f"读取全局宏观缓存失败 {cache_path}: {e}")
+                
+        # --- 2. 触发真实的大盘宏观外网采集 ---
+        logger.info(f"触发全局宏观拉网更新机制: {main_market}")
         macro_data = {}
-        # 通过线程池并行拉取，避免阻塞
+        
         def _fetch_safe(func, timeout=15):
             executor = ThreadPoolExecutor(max_workers=1)
             try:
@@ -681,7 +710,7 @@ class DataFetcher:
             finally:
                 executor.shutdown(wait=False)
 
-        if market == "CN":
+        if main_market == "CN":
             def get_lpr():
                 df = ak.macro_china_lpr()
                 if not df.empty:
@@ -715,7 +744,7 @@ class DataFetcher:
             if res_m2: macro_data["China_M2_Yoy"] = res_m2
             if res_pmi: macro_data["China_PMI"] = res_pmi
 
-        elif market in ["US", "HK", "CRYPTO", "INDEX"]:
+        elif main_market == "US":
             def get_nonfarm():
                 df = ak.macro_usa_non_farm()
                 if not df.empty:
@@ -748,6 +777,18 @@ class DataFetcher:
             if res_cpi: macro_data["US_CPI_Yoy"] = res_cpi
             if res_jobless: macro_data["US_Initial_Jobless"] = res_jobless
 
+        # --- 3. 结果入库并返回 ---
+        try:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump({"update_date": today_str, "data": macro_data}, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"保存全局宏观缓存失败 {cache_path}: {e}")
+            
+        return macro_data
+
+    def _fetch_macro(self, market: str) -> dict:
+        """获取宏观政策与经济数据"""
+        macro_data = self.get_macro_data(market)
         return {"macro": macro_data} if macro_data else {}
 
     def _fetch_technical(self, symbol: str) -> dict:

@@ -4,13 +4,13 @@
     let symbol = $state("AMAT.O");
     let analyzing = $state(false);
     let chatLog = $state([]);
-    let llmProvider = "ollama";
-    let modelName = "qwen3:1.7b";
+    let llmProvider = "null";
+    let modelName = "null";
 
     onMount(() => {
-        // 取出全局系统设置中的大模型网关设定
-        llmProvider = localStorage.getItem("llmProvider") || "ollama";
-        modelName = localStorage.getItem("modelName") || "qwen3:1.7b";
+        // 取出全局系统设置中的大模型网关设定，如果没设定过则传 null 交由后端 fallback 到全局配置
+        llmProvider = localStorage.getItem("llmProvider") || "null";
+        modelName = localStorage.getItem("modelName") || "null";
     });
 
     const roleMeta = {

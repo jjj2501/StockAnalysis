@@ -170,6 +170,8 @@ class OllamaLLM(BaseLLM):
             analysis = result.get("response", "Error: No response field in Ollama output")
             print(f"DEBUG: Ollama response received metadata: length={len(analysis)}")
             return analysis
+        except requests.exceptions.ConnectionError:
+            return "⚠️ **Ollama 未启动或拒绝连接**\n无法连接到本地大模型服务 (localhost:11434)。"
         except Exception as e:
             error_msg = f"Error generating backtest report: {str(e)}"
             print(f"DEBUG: {error_msg}")
@@ -188,6 +190,8 @@ class OllamaLLM(BaseLLM):
             response.raise_for_status()
             result = response.json()
             return result.get("response", "Error: No response field in Ollama output")
+        except requests.exceptions.ConnectionError:
+            return "⚠️ **AI 风控引擎无法连接**\n无法连接到本地大模型服务 (localhost:11434)。请确保 Ollama 已启动，或前往设置切换为您指定的外部 API.\n\n(但底层量化指标已完成计算并呈现在上方)"
         except requests.exceptions.Timeout:
             return "⚠️ **AI 通讯超时**\n本地大模型正在加载或负载过高，未能及时生成风控报告。但各项精确数学指标与全球资产雷达均已计算完毕，请参考上方数据面板。"
         except Exception as e:
@@ -255,8 +259,12 @@ class OllamaLLM(BaseLLM):
             response.raise_for_status()
             data = response.json()
             return data.get("message", {})
+        except requests.exceptions.ConnectionError:
+            return {"role": "assistant", "content": "⚠️ **Ollama 未启动或拒绝连接**\n无法连接到本地大模型服务 (localhost:11434)。请确保 Ollama 守护线程已拉起，或者前往 **设置中心** 切换为您指定的外部 API 提供者 (如 DeepSeek)。"}
+        except requests.exceptions.Timeout:
+            return {"role": "assistant", "content": "⚠️ **节点推理超时**\n使用本地大模型加载或推演时耗时过久被熔断。"}
         except Exception as e:
-            return {"role": "assistant", "content": f"[内部通信总线崩塌: {e}]"}
+            return {"role": "assistant", "content": f"⚠️ **内部通信总线崩塌**: {e}"}
 
 
 

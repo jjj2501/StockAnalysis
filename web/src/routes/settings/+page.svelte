@@ -22,7 +22,7 @@
     let seqLength = $state(60);
 
     // AI 模型配置
-    let llmProvider = $state("ollama");
+    let llmProvider = $state("ollama"); // 设置页这里的下拉框可以暂定为 default 毕竟如果真的用外部 API 这里用户会重选
     let modelName = $state("qwen3:1.7b");
     let llmApiKey = $state("");
     let llmBaseUrl = $state("");

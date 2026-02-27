@@ -24,6 +24,7 @@ def test_risk_manager_cny_conversion(MockFX, MockData, risk_manager):
     }, index=pd.date_range('2024-01-01', periods=252, freq='B'))
     mock_stock_df = mock_stock_df.reset_index(names=['date'])
     mock_data_instance.get_stock_data.return_value = mock_stock_df
+    mock_data_instance.parse_symbol_market.return_value = ("AAPL", "US")
     
     risk_manager.fx_manager = mock_fx_instance
     risk_manager.fetcher = mock_data_instance
@@ -41,7 +42,7 @@ def test_risk_manager_cny_conversion(MockFX, MockData, risk_manager):
     result = risk_manager.calculate_portfolio_risk(portfolio, days_history=100)
     
     # 断言成功状态
-    assert result.get("status") == "success"
+    assert result.get("status") == "success", f"Risk manager failed: {result}"
     
     # 检查穿透后的人民币市值 (10股 * $100 * 7.0汇率)
     assert result.get("total_value") == 7000.0

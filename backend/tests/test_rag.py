@@ -45,8 +45,8 @@ def mock_ingestion(temp_vdb):
     original_get = backend.core.rag.ingestion.get_vector_db
     backend.core.rag.ingestion.get_vector_db = lambda: temp_vdb
     
-    # 构建小颗粒度切割器用于测试
-    pipeline = KnowledgeIngestion(chunk_size=100, chunk_overlap=20)
+    # 构建大颗粒度切割器用于测试，避免单段文本被切包后 Dummy 模型乱序检索
+    pipeline = KnowledgeIngestion(chunk_size=500, chunk_overlap=20)
     yield pipeline
     
     backend.core.rag.ingestion.get_vector_db = original_get

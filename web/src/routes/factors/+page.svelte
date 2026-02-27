@@ -122,12 +122,12 @@
     let error = $state("");
 
     // 全局大模型配置
-    let llmProvider = "ollama";
-    let modelName = "qwen3:1.7b";
+    let llmProvider = "null";
+    let modelName = "null";
 
     onMount(() => {
-        llmProvider = localStorage.getItem("llmProvider") || "ollama";
-        modelName = localStorage.getItem("modelName") || "qwen3:1.7b";
+        llmProvider = localStorage.getItem("llmProvider") || "null";
+        modelName = localStorage.getItem("modelName") || "null";
         loadFactors(); // 如果有需要页面加载就刷新可以放这（视原有逻辑而定）
     });
 

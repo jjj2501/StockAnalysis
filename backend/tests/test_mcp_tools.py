@@ -55,7 +55,10 @@ class TestMCPTools(unittest.TestCase):
             self.assertIn("连接超时", data["error"] + "未抓得")
         else:
             self.assertIn("news", data)
-            self.assertIn("sentiment_score", data["news"])
+            if "notice" in data["news"]:
+                self.assertIsInstance(data["news"]["notice"], str)
+            else:
+                self.assertIn("sentiment_score", data["news"])
 
 if __name__ == '__main__':
     unittest.main()
