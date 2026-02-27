@@ -376,6 +376,35 @@ async def multi_agent_safari_stream(symbol: str, provider: Optional[str] = None,
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/agents/memory/{symbol}")
+async def get_agent_memory(symbol: str):
+    """
+    获取指定股票的历史推演记忆摘要（供前端历史洞察面板展示）
+    """
+    try:
+        from backend.core.agents.memory import AgentMemoryStore
+        history = AgentMemoryStore.load_history(symbol, top_k=5)
+        symbols = AgentMemoryStore.list_all_symbols()
+        return {"symbol": symbol, "history": history, "all_symbols": symbols}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents/insights")
+async def get_global_insights():
+    """
+    获取跨股票全局智慧库（所有推演中积累的通用规律洞见）
+    """
+    try:
+        from backend.core.agents.memory import AgentMemoryStore
+        insights = AgentMemoryStore.get_global_insights(top_k=20)
+        return {"insights": insights, "count": len(insights)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 @router.get("/backtest/{symbol}")
 async def backtest_stock(
     symbol: str,

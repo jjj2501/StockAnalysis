@@ -7,8 +7,19 @@
     let llmProvider = "null";
     let modelName = "null";
 
+    // 历史记忆面板状态
+    let memoryPanelOpen = $state(false);
+    let memoryHistory = $state(/** @type {any[]} */ ([]));
+    let globalInsights = $state(/** @type {any[]} */ ([]));
+    let memoryLoading = $state(false);
+
+    // 辩论回合与共识评分
+    let debateRound = $state(0);
+    /** @type {number|null} */
+    let consensusScore = $state(null);
+    let showRawData = $state(null);
+
     onMount(() => {
-        // 取出全局系统设置中的大模型网关设定，如果没设定过则传 null 交由后端 fallback 到全局配置
         llmProvider = localStorage.getItem("llmProvider") || "null";
         modelName = localStorage.getItem("modelName") || "null";
     });
@@ -55,8 +66,9 @@
         if (!symbol) return;
         analyzing = true;
         chatLog = [];
+        debateRound = 0;
+        consensusScore = null;
 
-        // 将选择的 Provider 参数传给后端路由，指示使用对应的强力 API
         const es = new EventSource(
             `/api/agents/${symbol}/stream?provider=${llmProvider}&model=${modelName}`,
         );
@@ -65,48 +77,102 @@
             try {
                 const data = JSON.parse(event.data);
 
+                // 辩论回合分隔符
+                if (
+                    data.event === "round_start" ||
+                    data.event === "debate_round"
+                ) {
+                    debateRound = data.round || 0;
+                    chatLog.push({
+                        role: "__divider__",
+                        status: "done",
+                        content:
+                            data.event === "debate_round"
+                                ? `⚔️ 第 ${(data.round || 0) + 1} 轮追加辩论 — 发现显著分歧，决策层点名复盘`
+                                : `🔔 第 ${data.round || 1} 轮圆桐辩论开始`,
+                        round: data.round,
+                    });
+                    return;
+                }
+
                 let lastEntry = chatLog[chatLog.length - 1];
-                if (lastEntry && lastEntry.role === data.role) {
-                    if (data.is_chunk) {
-                        lastEntry.content += data.content;
-                    } else {
-                        lastEntry.content += data.content;
-                    }
+
+                // 带技能强化徽章的全新气泡
+                if (
+                    data.skills &&
+                    data.skills.length > 0 &&
+                    (!lastEntry ||
+                        lastEntry.role !== data.role ||
+                        lastEntry.role === "__divider__")
+                ) {
+                    chatLog.push({
+                        role: data.role,
+                        status: data.status,
+                        content: data.content,
+                        raw_data: data.raw_data || null,
+                        skills: data.skills,
+                    });
+                    return;
+                }
+
+                if (
+                    lastEntry &&
+                    lastEntry.role === data.role &&
+                    lastEntry.role !== "__divider__"
+                ) {
+                    lastEntry.content += data.content;
                     lastEntry.status = data.status;
+                    if (data.raw_data) lastEntry.raw_data = data.raw_data;
                 } else {
                     chatLog.push({
                         role: data.role,
                         status: data.status,
                         content: data.content,
                         raw_data: data.raw_data || null,
+                        skills: data.skills || [],
                     });
                 }
 
-                // 如果是最后时刻才发送过来的 raw_data
-                if (data.raw_data) {
-                    lastEntry = chatLog[chatLog.length - 1];
-                    lastEntry.raw_data = data.raw_data;
-                }
-
+                // 提取共识评分
                 if (
                     data.status === "done" &&
-                    data.role === "Portfolio Manager"
+                    data.role === "Portfolio Manager" &&
+                    typeof data.content === "string"
                 ) {
+                    const match = data.content.match(/(\d+)\/100/);
+                    if (match) consensusScore = parseInt(match[1]);
                     es.close();
                     analyzing = false;
+                    if (memoryPanelOpen) loadMemory();
                 }
             } catch (e) {
                 console.error("SSE parse error", e);
             }
         };
 
-        es.onerror = (err) => {
-            console.error("SSE Error", err);
-            // Ignore small disconnects, but close on final.
-            // In a real app we might attempt reconnection.
+        es.onerror = () => {
             es.close();
             analyzing = false;
         };
+    }
+
+    async function loadMemory() {
+        memoryLoading = true;
+        try {
+            const [mr, ir] = await Promise.all([
+                fetch(`/api/agents/memory/${symbol}`),
+                fetch(`/api/agents/insights`),
+            ]);
+            memoryHistory = (await mr.json()).history || [];
+            globalInsights = (await ir.json()).insights || [];
+        } catch {}
+        memoryLoading = false;
+    }
+
+    function consensusColor(s) {
+        if (s >= 65) return "text-green-400";
+        if (s <= 35) return "text-rose-400";
+        return "text-amber-400";
     }
 </script>
 
@@ -165,6 +231,126 @@
                 {/if}
             </button>
         </div>
+
+        <!-- 共识评分 + 记忆面板入口 -->
+        {#if consensusScore !== null}
+            <div class="flex items-center gap-3 mt-2">
+                <span class="text-xs text-white/40">多空共识评分:</span>
+                <span class="font-bold text-lg {consensusColor(consensusScore)}"
+                    >{consensusScore}/100</span
+                >
+                <div
+                    class="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden"
+                >
+                    <div
+                        class="h-full bg-gradient-to-r from-rose-500 via-amber-400 to-green-500 transition-all"
+                        style="width:{consensusScore}%"
+                    ></div>
+                </div>
+            </div>
+        {/if}
+    </div>
+
+    <!-- 历史记忆侧边抽屉 -->
+    {#if memoryPanelOpen}
+        <div
+            class="fixed inset-y-0 right-0 w-80 z-50 bg-[#0d0f14] border-l border-white/10 shadow-2xl flex flex-col"
+        >
+            <div
+                class="flex items-center justify-between p-4 border-b border-white/10"
+            >
+                <h3 class="font-bold text-white text-sm">📚 历史推演洞察</h3>
+                <button
+                    onclick={() => (memoryPanelOpen = false)}
+                    class="text-white/40 hover:text-white transition-colors"
+                    >✕</button
+                >
+            </div>
+            <div
+                class="flex-1 overflow-y-auto p-4 space-y-4 text-xs text-white/70"
+            >
+                {#if memoryLoading}
+                    <div class="flex justify-center py-8">
+                        <div
+                            class="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"
+                        ></div>
+                    </div>
+                {:else}
+                    {#if memoryHistory.length > 0}
+                        <div
+                            class="font-semibold text-white/50 uppercase tracking-wider mb-2"
+                        >
+                            📂 {symbol} 历史推演
+                        </div>
+                        {#each memoryHistory as h}
+                            <div class="bg-white/5 rounded-lg p-3 space-y-1">
+                                <div class="text-white/40">
+                                    {(h.timestamp || "").slice(0, 10)}
+                                </div>
+                                <div
+                                    class="{consensusColor(
+                                        h.consensus?.score || 50,
+                                    )} font-bold"
+                                >
+                                    {h.consensus?.score || "-"}/100 {h.consensus
+                                        ?.verdict || ""}
+                                </div>
+                                <div class="text-white/60 leading-relaxed">
+                                    {(h.verdict_summary || "").slice(0, 120)}...
+                                </div>
+                            </div>
+                        {/each}
+                    {:else}
+                        <div class="text-white/30 text-center py-6">
+                            暂无历史推演记录
+                        </div>
+                    {/if}
+                    {#if globalInsights.length > 0}
+                        <div
+                            class="font-semibold text-white/50 uppercase tracking-wider mt-4 mb-2"
+                        >
+                            🧠 全局智慧库
+                        </div>
+                        {#each globalInsights as ins}
+                            <div
+                                class="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5"
+                            >
+                                <div class="text-amber-300/80">
+                                    {ins.content}
+                                </div>
+                                <div class="text-white/20 mt-1">
+                                    {(ins.timestamp || "").slice(0, 10)}
+                                </div>
+                            </div>
+                        {/each}
+                    {/if}
+                {/if}
+            </div>
+        </div>
+        <!-- 遮罩 -->
+        <button
+            class="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+            onclick={() => (memoryPanelOpen = false)}
+        ></button>
+    {/if}
+    <!-- 顶部功能：记忆面板入口 -->
+    <div class="flex items-center gap-3 -mt-3 mb-2">
+        <button
+            onclick={() => {
+                memoryPanelOpen = true;
+                loadMemory();
+            }}
+            class="text-xs text-white/40 hover:text-white/80 transition-colors flex items-center gap-1.5 border border-white/10 hover:border-white/20 rounded-lg px-3 py-1.5"
+        >
+            📚 历史洞察
+        </button>
+        {#if debateRound > 0}
+            <span
+                class="text-xs text-amber-400 border border-amber-500/30 rounded-lg px-3 py-1.5"
+            >
+                ⚔️ 已进行 {debateRound} 轮追加辩论
+            </span>
+        {/if}
     </div>
 
     <!-- 瀑布流沙盘区 -->
@@ -191,14 +377,22 @@
         {/if}
 
         {#each chatLog as log}
-            {@const meta = roleMeta[log.role] || {
-                icon: "👤",
-                color: "text-white",
-                bg: "bg-white/10",
-                border: "border-white/20",
-                name: log.role,
-            }}
-            <div
+            {#if log.role === "__divider__"}
+                <!-- 辩论回合分隔符 -->
+                <div class="flex items-center gap-3 my-4 animate-in fade-in duration-500">
+                    <div class="flex-1 h-px bg-amber-500/20"></div>
+                    <span class="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-4 py-1.5 tracking-wide">{log.content}</span>
+                    <div class="flex-1 h-px bg-amber-500/20"></div>
+                </div>
+            {:else}
+                {@const meta = roleMeta[log.role] || {
+                    icon: "👤",
+                    color: "text-white",
+                    bg: "bg-white/10",
+                    border: "border-white/20",
+                    name: log.role,
+                }}
+                <div
                 class="flex gap-5 group animate-in slide-in-from-bottom-4 fade-in duration-500"
             >
                 <!-- 头像列 (带发光光晕) -->
@@ -221,16 +415,13 @@
 
                 <!-- 内容气泡列 -->
                 <div class="flex-1 pt-1 mb-8 w-0">
-                    <div class="flex items-center gap-3 mb-2.5">
-                        <span
-                            class="font-bold text-base {meta.color} tracking-wide"
-                            >{meta.name}</span
-                        >
-                        <span
-                            class="text-white/30 text-xs font-mono px-2 py-0.5 rounded bg-white/5"
-                            >{log.role}</span
-                        >
-
+                    <div class="flex items-center gap-3 mb-2.5 flex-wrap">
+                        <span class="font-bold text-base {meta.color} tracking-wide">{meta.name}</span>
+                        <span class="text-white/30 text-xs font-mono px-2 py-0.5 rounded bg-white/5">{log.role}</span>
+                        <!-- 技能强化徽章 -->
+                        {#each (log.skills || []) as skill}
+                            <span class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">⚡ {skill}</span>
+                        {/each}
                         {#if log.status === "typing"}
                             <div
                                 class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 shadow-inner"
@@ -360,7 +551,7 @@
                         </div>
                     </div>
                 </div>
-            </div>
+            {/if}
         {/each}
 
         {#if chatLog.length > 0 && chatLog[chatLog.length - 1].role === "Portfolio Manager" && chatLog[chatLog.length - 1].status === "done"}

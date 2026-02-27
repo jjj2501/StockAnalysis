@@ -1,24 +1,35 @@
 import json
 import logging
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, Generator, Optional
 from backend.core.llm import OllamaLLM
 from backend.core.agents.tools import mcp_tools, AVAILABLE_TOOLS
 
 logger = logging.getLogger(__name__)
 
+# 扩展工具登记表：核心 MCP + 技能层实现
+TOOL_REGISTRY = dict(AVAILABLE_TOOLS)  # AVAILABLE_TOOLS 是 dict
+import contextlib
+with contextlib.suppress(ImportError):
+    from backend.core.agents.skills.implementations import compute_var_95, analyze_yield_curve
+    TOOL_REGISTRY["compute_var_95"] = compute_var_95
+    TOOL_REGISTRY["analyze_yield_curve"] = analyze_yield_curve
+
+
 class ReActAgent:
     """
     基于 Tool Calling (MCP) 的动态自治智能体基类。
-    不再是单一的 Prompt-Completion 映射，而是一个完整的 ReAct (Reason + Act) 循环机器。
+    支持角色专属技能打包（extra_skills）注入。
     """
-    def __init__(self, name: str, role_prompt: str, llm: OllamaLLM, max_turns: int = 5):
+    def __init__(self, name: str, role_prompt: str, llm: OllamaLLM, max_turns: int = 5,
+                 extra_skills: Optional[List[Dict]] = None):
         self.name = name
         self.role_prompt = role_prompt
         self.llm = llm
         self.max_turns = max_turns
-        # 内置系统级可用抓手
-        self.tools = mcp_tools
-        self.tool_functions = AVAILABLE_TOOLS
+        self.extra_skills = extra_skills or []
+        # 合并：公共 MCP 工具 + 角色专属技能
+        self.tools = list(mcp_tools) + [s for s in self.extra_skills if s not in mcp_tools]
+        self.tool_functions = TOOL_REGISTRY
 
     def run(self, context_messages: List[Dict[str, str]], symbol: str) -> Generator[Dict[str, Any], None, None]:
         """
@@ -81,10 +92,9 @@ class ReActAgent:
 
                 yield {"type": "action", "tool": fn_name, "args": fn_args}
                 
-                # 在真实沙盘里执行该 MCP 工具
-                if fn_name in TOOL_REGISTRY:
+                if fn_name in self.tool_functions:
                     try:
-                        observation = TOOL_REGISTRY[fn_name](**fn_args)
+                        observation = self.tool_functions[fn_name](**fn_args)
                     except Exception as e:
                         observation = f"探针执行崩溃: {str(e)}"
                 else:
