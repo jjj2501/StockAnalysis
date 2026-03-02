@@ -190,19 +190,23 @@ class GPUManager:
             logger.error(f"内存检查失败: {e}")
             return True  # 如果检查失败，假设足够
 
-# 全局GPU管理器实例
-gpu_manager = GPUManager()
+# 全局GPU管理器实例（懒加载）
+_gpu_manager_instance = None
 
 def get_gpu_manager() -> GPUManager:
-    """获取全局GPU管理器"""
-    return gpu_manager
+    """获取全局GPU管理器（懒加载防死锁）"""
+    global _gpu_manager_instance
+    if _gpu_manager_instance is None:
+        _gpu_manager_instance = GPUManager()
+    return _gpu_manager_instance
 
 def device_info() -> Dict[str, Any]:
     """获取设备信息"""
+    mgr = get_gpu_manager()
     return {
-        "device": str(gpu_manager.device),
-        "gpu_available": gpu_manager.is_gpu_available(),
-        "gpu_info": gpu_manager.gpu_info,
+        "device": str(mgr.device),
+        "gpu_available": mgr.is_gpu_available(),
+        "gpu_info": mgr.gpu_info,
         "config": {
             "use_gpu": settings.USE_GPU,
             "gpu_device_id": settings.GPU_DEVICE_ID,

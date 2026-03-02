@@ -51,5 +51,18 @@ description: 汇总了 AlphaPulse (StockAnalysis) 开发与运行过程中最常
      ```
   2. 也可以在特定方法调用时通过局部显式地给 `requests` 传空字典强制走直连：`proxies={"http": None, "https": None}`。
 
+## 4. 环境部署与运行错误
+
+### 4.1 Windows PowerShell 下无法识别 uv 命令
+- **报错表现**:
+  ```powershell
+  uv : 无法将“uv”项识别为 cmdlet、函数、脚本文件或可运行程序的名称。
+  Suggestion [3,General]: 找不到命令 uv，但它确实存在于当前位置。默认情况下，Windows PowerShell 不会从当前位置加载命令。如果信任此命令，请改为键入“.\uv”。
+  ```
+- **触发场景**: 在 Windows PowerShell 终端中，尝试直接执行当前目录下的 `uv` (例如 `uv run uvicorn`)，但由于 Windows 默认的安全策略限制，不会自动执行当前目录的可执行文件，导致抛出命令未找到的异常。
+- **解决方案**:
+  1. **明确路径执行**: 按提示在命令前加上 `.\`，例如 `.\uv run uvicorn ...`
+  2. **直接使用虚拟环境的 Python**: 绕过 uv 显式调用虚拟环境内的可执行程序，如 `.venv\Scripts\python.exe -m uvicorn ...` 或直接 `.venv\Scripts\pip.exe install ...`
+
 ## 使用指引
 本速查手册技能项将随项目推进动态演进。当系统抛出不明断言阻断流或者引发界面不可知崩溃时，请首先比对本技能册尝试采用标准防务方案进行恢复。

@@ -22,6 +22,11 @@ from backend.core.agents.prompts import (
 from backend.core.agents.base import ReActAgent
 from backend.core.agents.debate import DebateEngine
 from backend.core.agents.memory import AgentMemoryStore
+from backend.core.agents.memory_fs import (
+    write_session_to_daily, promote_to_long_term,
+    read_recent_daily, read_long_term, read_global_memory
+)
+from backend.core.agents.context_loader import build_memory_injection_message
 from backend.core.agents.skills import ROLE_SKILLS
 
 logger = logging.getLogger(__name__)
@@ -87,13 +92,20 @@ class AgentOrchestrator:
         debate = DebateEngine(max_debate_rounds=self.max_debate_rounds)
 
         # ==========================================
-        # Phase 0: 加载历史记忆，构建背景上下文
+        # Phase 0: 加载历史记忆（OpenClaw 分级加载）
         # ==========================================
-        memory_context = AgentMemoryStore.build_memory_context(symbol)
-        if memory_context:
+        # 分级加载：常驻 = 长期 memory.md + 近两日短期 .md + 全局规律
+        memory_msg = build_memory_injection_message(symbol)
+        long_term_text = read_long_term(symbol)
+        recent_text    = read_recent_daily(symbol, days=2)
+        global_text    = read_global_memory()
+
+        has_memory = bool(long_term_text or recent_text)
+        if has_memory:
             yield _sse(
                 "Data Engineer", "typing",
-                f"📂 **检索历史记忆中...** 发现该标的的历史推演档案，正在注入参考上下文：\n\n{memory_context}\n\n",
+                f"📂 **检索历史记忆（Markdown 档案）...** "
+                f"发现 {symbol} 长期规律 + 近期推演摘要，正在注入参考上下文。\n\n",
                 is_chunk=True
             )
 
@@ -111,17 +123,20 @@ class AgentOrchestrator:
 
         yield _sse("Data Engineer", "done", f"✅ 成功提取 **{symbol}** 全维面板。[{len(factors)} 个维度] 交由投研委员会研讨。\n", raw_data=factors)
 
-        # 中央议事大厅记忆体
-        context_messages = [
-            {
-                "role": "user",
-                "content": (
-                    f"本次研讨标的: **{symbol}**。\n"
-                    + (f"\n{memory_context}\n\n---\n\n" if memory_context else "")
-                    + f"数据工程师初采底层面板（供所有成员参考）:\n{json.dumps(factors, ensure_ascii=False)}"
-                )
-            }
-        ]
+        # 中央议事大厅记忆体（注入因子底牌 + Markdown 记忆上下文）
+        context_messages = []
+
+        # 若有历史记忆，作为首条 user message 注入（兼容 OpenAI message 列表格式）
+        if memory_msg:
+            context_messages.append(memory_msg)
+
+        context_messages.append({
+            "role": "user",
+            "content": (
+                f"本次研讨标的: **{symbol}**。\n"
+                f"数据工程师初采底层面板（供所有成员参考）:\n{json.dumps(factors, ensure_ascii=False)}"
+            )
+        })
 
         # ==========================================
         # Phase 2: 第 1 轮 — 分析师接力发言
@@ -270,29 +285,48 @@ class AgentOrchestrator:
 
         yield _sse("Portfolio Manager", "done", "\n\n---\n✅ **全体智能体全链路推演完毕**\n")
 
-        # ── 知识提炼：让 PM 总结可复用规律 ──
+        # ── OpenClaw 记忆蒸馏：将本次推演压缩写入 Markdown ──
         consensus = debate.get_final_consensus()
-        yield _sse("Portfolio Manager", "typing", "\n\n🧠 **正在提炼本次推演的学习洞见写入全局知识库...**\n\n", is_chunk=True)
+        yield _sse("Portfolio Manager", "typing",
+                   "\n\n🧠 **正在蒸馏推演记忆并写入 Markdown 档案...**\n\n", is_chunk=True)
 
-        insight_prompt = (
-            f"基于刚才关于 {symbol} 的推演，请用一句话总结出一条可复用的、跨股票通用的投资规律或风控洞见。"
-            f"例如格式：'当[某技术指标]出现时+[某基本面条件]，通常[观察到的规律]'。只输出规律本身，不超过 60 字。"
+        # 1. 生成结构化摘要（用于短期记忆）
+        distill_prompt = (
+            f"请将以下关于 {symbol} 的多智能体投研讨论，"
+            f"压缩为 3-5 条 Markdown 要点（每条以 - 开头）。"
+            f"如果发现有值得长期记录的跨标的规律，请在最末以 '【长期洞见】:' 开头单独列出一条。\n\n"
+            f"辩论摘要：\n{debate.get_board_summary()[-1500:]}\n"
+            f"最终裁定：\n{final_verdict[:500]}"
         )
-        insight_text = ""
+        distill_text = ""
         try:
-            for chunk in self.llm.stream_generate(insight_prompt):
-                insight_text += chunk
-            if insight_text.strip():
-                AgentMemoryStore.save_insight(insight_text.strip(), tags=[symbol])
-                yield _sse(
-                    "Portfolio Manager", "typing",
-                    f"> 💡 **新洞见已写入全局智慧库**: {insight_text.strip()}\n\n",
-                    is_chunk=True
-                )
+            for chunk in self.llm.stream_generate(distill_prompt):
+                distill_text += chunk
         except Exception:
-            pass  # 知识提炼不影响主流程
+            distill_text = f"最终裁定：{final_verdict[:300]}"
 
-        # ── 持久化本次完整会话 ──
+        # 2. 写入短期记忆（今日 .md 文件）
+        try:
+            write_session_to_daily(symbol, distill_text)
+        except Exception as e:
+            logger.warning(f"[OpenClaw] 写入短期记忆失败: {e}")
+
+        # 3. 若包含长期洞见，提炼并写入 memory.md
+        if "【长期洞见】" in distill_text:
+            long_term_candidate = distill_text.split("【长期洞见】:")[-1].strip().split("\n")[0]
+            if long_term_candidate:
+                try:
+                    promote_to_long_term(symbol, long_term_candidate)
+                    promote_to_long_term("GLOBAL", long_term_candidate, is_global=True)
+                    yield _sse(
+                        "Portfolio Manager", "typing",
+                        f"> 💡 **新长期洞见已写入 memory.md**: {long_term_candidate[:80]}\n\n",
+                        is_chunk=True
+                    )
+                except Exception as e:
+                    logger.warning(f"[OpenClaw] 写入长期记忆失败: {e}")
+
+        # 4. 兼容性写入旧 JSON 存储（保持 API /api/agents/memory 接口可用）
         try:
             AgentMemoryStore.save_session(
                 symbol=symbol,
@@ -302,7 +336,65 @@ class AgentOrchestrator:
                 consensus=consensus["consensus"]
             )
         except Exception as mem_err:
-            logger.error(f"[记忆持久化] 保存失败: {mem_err}")
+            logger.error(f"[记忆持久化] JSON 备份保存失败: {mem_err}")
+
+        # 5. 刷新 BM25 索引（让刚写入的 Markdown 记忆立即可被下次推演检索到）
+        try:
+            from backend.core.agents.rag_retriever import refresh_index
+            refresh_index()
+        except Exception:
+            pass  # 索引刷新不影响主流程
+
+        # 6. L1 Prompt 自进化（推演后自动优化 Agent 角色 Prompt 并 Git 提交）
+        try:
+            from backend.core.agents.evolution.prompt_evolver import evolve_prompt
+            score = consensus["consensus"].get("score", 50)
+            board_summary = debate.get_board_summary()
+
+            # 选择一个 Agent 进行进化（简单策略：轮流选择，避免偏向）
+            agent_names = ["Macro Analyst", "Quant Researcher", "Risk Control Agent"]
+            target_agent = agent_names[int(session_id) % len(agent_names)]
+
+            yield _sse(
+                "Portfolio Manager", "typing",
+                f"\n\n🧬 **启动 L1 自进化引擎** — 正在为 {target_agent} 提炼经验...\n\n",
+                is_chunk=True
+            )
+
+            evo_result = evolve_prompt(
+                llm=self.llm,
+                agent_name=target_agent,
+                symbol=symbol,
+                debate_summary=board_summary[-1000:],
+                verdict=final_verdict[:500],
+                consensus_score=score
+            )
+
+            if evo_result["success"]:
+                insight = evo_result["insight"]
+                git_msg = evo_result.get("git_result", {}).get("message", "")
+                branch = evo_result.get("git_result", {}).get("branch", "")
+                yield _sse(
+                    "Portfolio Manager", "typing",
+                    f"> 🧬 **{target_agent} 进化完成**: {insight}\n"
+                    f"> 📦 Git: {git_msg}\n\n",
+                    is_chunk=True
+                )
+            else:
+                yield _sse(
+                    "Portfolio Manager", "typing",
+                    f"> ⏭️ 本轮进化跳过: {evo_result.get('insight', '条件不足')}\n\n",
+                    is_chunk=True
+                )
+        except Exception as evo_err:
+            import traceback
+            tb = traceback.format_exc()
+            logger.warning(f"[L1进化] 进化失败（不影响主流程）: {evo_err}\n{tb}")
+            yield _sse(
+                "Portfolio Manager", "typing",
+                f"\n\n> ⚠️ **L1 自进化引擎异常**: {evo_err}\n\n",
+                is_chunk=True
+            )
 
         yield _sse(
             "Portfolio Manager", "done",

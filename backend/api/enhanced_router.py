@@ -15,7 +15,13 @@ from backend.auth.database import get_db
 from backend.auth.schemas import AuditLogCreate
 
 router = APIRouter()
-engine = StockEngine()
+_engine_instance = None
+def get_engine() -> StockEngine:
+    global _engine_instance
+    if _engine_instance is None:
+        _engine_instance = StockEngine()
+    return _engine_instance
+
 
 # LLM 动态配置
 # 后续所有接口均应在请求时通过 get_llm_client 动态获取并加载 settings 变量，不再使用全局对象
@@ -103,7 +109,7 @@ async def predict_stock(
     """
     try:
         # 这里预测是异步的，需要等待
-        result = await engine.predict(symbol, task_id=symbol)
+        result = await get_engine().predict(symbol, task_id=symbol)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         
@@ -143,7 +149,7 @@ async def analyze_stock(
     try:
         # 1. 进度：开始 (10%)
         # 2. 获取预测结果并上报进度
-        data_result = await engine.predict(symbol, task_id=symbol)
+        data_result = await get_engine().predict(symbol, task_id=symbol)
         if "error" in data_result:
             raise HTTPException(status_code=400, detail=data_result["error"])
         

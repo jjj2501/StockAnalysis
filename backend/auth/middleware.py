@@ -250,16 +250,17 @@ class AuditMiddleware(BaseHTTPMiddleware):
             }
             
             # 对于POST/PUT/PATCH请求，记录请求体（敏感信息需要过滤）
-            if request.method in ["POST", "PUT", "PATCH"]:
-                try:
-                    body = await request.body()
-                    if body:
-                        # 过滤敏感信息
-                        body_str = body.decode()
-                        filtered_body = self.filter_sensitive_data(body_str)
-                        audit_data["request_body"] = filtered_body
-                except Exception:
-                    pass
+            # 临时禁用中间件中的 request.body() 读取，避免引发 Starlette 请求流死锁挂起问题
+            # if request.method in ["POST", "PUT", "PATCH"]:
+            #     try:
+            #         body = await request.body()
+            #         if body:
+            #             # 过滤敏感信息
+            #             body_str = body.decode()
+            #             filtered_body = self.filter_sensitive_data(body_str)
+            #             audit_data["request_body"] = filtered_body
+            #     except Exception:
+            #         pass
             
             # 记录审计日志
             logger.info(f"审计日志: {json.dumps(audit_data)}")

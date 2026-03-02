@@ -63,17 +63,28 @@ class ReActAgent:
                 
             messages.append(response_msg)
             
-            # 1. 检查 Agent 在这一回合是否说出了任何“推导思考过程”
-            if response_msg.get("content"):
-                yield {"type": "thought", "content": response_msg["content"]}
-                
-            # 2. 检查 Agent 是否请求了 Tool Calling动作
+            # ── 思考过程展示 ──
+            # DeepSeek Reasoner: reasoning_content = 思考链（内心独白）
+            # 普通模型: content 在有工具调用时也可能是推理说明
+            # 无论哪种情况，"最终答案"永远是 content，不重复显示为 thought
+            reasoning_text = response_msg.get("reasoning_content")
+            if reasoning_text:
+                # Reasoner 模式：展示推理链作为 thought
+                yield {"type": "thought", "content": reasoning_text}
+            
+            # 2. 检查 Agent 是否请求了 Tool Calling 动作
             tool_calls = response_msg.get("tool_calls", [])
             
             if not tool_calls:
-                # 如果既没有调用工具，且有文本输出，说明它已经得出了最终结论，可以跳出循环结束回合
-                yield {"type": "final_answer", "content": response_msg.get("content", "")}
+                # 没有工具调用 → 这就是最终结论，直接输出并结束
+                final_content = response_msg.get("content", "")
+                yield {"type": "final_answer", "content": final_content}
                 break
+
+            # 有工具调用时，若没有 reasoning_content，则把 content 作为思考说明展示
+            if not reasoning_text and response_msg.get("content"):
+                yield {"type": "thought", "content": response_msg["content"]}
+
 
             # 3. 如果请求了Action，则执行函数提取Observation
             for tool_call in tool_calls:

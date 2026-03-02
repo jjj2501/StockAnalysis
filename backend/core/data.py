@@ -699,16 +699,14 @@ class DataFetcher:
         logger.info(f"触发全局宏观拉网更新机制: {main_market}")
         macro_data = {}
         
-        def _fetch_safe(func, timeout=15):
-            executor = ThreadPoolExecutor(max_workers=1)
+        def _fetch_safe(func):
             try:
-                future = executor.submit(func)
-                return future.result(timeout=timeout)
+                # 外部 (scheduler.py) 已通过 asyncio.to_thread(_update_all_caches) 将其放入后台线程池
+                # 这里无需再嵌套创建新的 ThreadPoolExecutor 反复消耗系统句柄，易引发死锁
+                return func()
             except Exception as e:
-                logger.warning(f"获取宏观数据超时或失败 {func.__name__}: {e}")
+                logger.warning(f"获取宏观数据失败 {func.__name__}: {e}")
                 return None
-            finally:
-                executor.shutdown(wait=False)
 
         if main_market == "CN":
             def get_lpr():

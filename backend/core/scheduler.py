@@ -44,8 +44,9 @@ class MarketDataScheduler:
             if cn_macro.exists(): os.remove(cn_macro)
             if us_macro.exists(): os.remove(us_macro)
             
-            self.fetcher.get_macro_data("CN")
-            self.fetcher.get_macro_data("US")
+            # 使用 to_thread 避免阻塞事件循环
+            await asyncio.to_thread(self.fetcher.get_macro_data, "CN")
+            await asyncio.to_thread(self.fetcher.get_macro_data, "US")
         except Exception as e:
             logger.error(f"[Scheduler] 宏观大盘预热更新失败: {e}")
             
@@ -57,9 +58,9 @@ class MarketDataScheduler:
                 end_date = time.strftime("%Y-%m-%d")
                 
                 # 为了防止集中并发被封禁，排队串行更新K线
-                df = self.fetcher._fetch_from_remote(symbol, start_date, end_date, market)
+                df = await asyncio.to_thread(self.fetcher._fetch_from_remote, symbol, start_date, end_date, market)
                 if df is not None and not df.empty:
-                    self.fetcher._save_cache(symbol, df, market)
+                    await asyncio.to_thread(self.fetcher._save_cache, symbol, df, market)
                     success_count += 1
                 
                 # --- 静默重刷对应股票的全维因子 ---
@@ -67,7 +68,7 @@ class MarketDataScheduler:
                     factor_path = self.fetcher._get_factor_cache_path(symbol, market)
                     if factor_path.exists():
                         os.remove(factor_path) # 强制弃用旧档案
-                    self.fetcher.get_comprehensive_factors(f"{market}_{symbol}" if market!="CN" else symbol)
+                    await asyncio.to_thread(self.fetcher.get_comprehensive_factors, f"{market}_{symbol}" if market!="CN" else symbol)
                 except Exception as ef:
                     logger.warning(f"[Scheduler] 弱依赖: 静默预热全维因子失败 {market}-{symbol}: {ef}")
                 

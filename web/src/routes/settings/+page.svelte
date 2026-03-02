@@ -59,6 +59,9 @@
             if (llmConfig) {
                 llmApiKey = llmConfig.api_key || "";
                 llmBaseUrl = llmConfig.base_url || "";
+                // 优先使用后端持久化的设置，而不是仅靠 localStorage
+                if (llmConfig.provider) llmProvider = llmConfig.provider;
+                if (llmConfig.model) modelName = llmConfig.model;
             }
         } catch (/** @type {any} */ e) {
             console.error("加载设备信息失败:", e);
@@ -122,6 +125,8 @@
                     body: JSON.stringify({
                         api_key: llmApiKey,
                         base_url: llmBaseUrl,
+                        provider: llmProvider,
+                        model: modelName,
                     }),
                 }),
             ]);

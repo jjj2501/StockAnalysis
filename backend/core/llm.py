@@ -391,10 +391,23 @@ class OpenAILLM(BaseLLM):
         """
         供高级 Agent (ReAct) MCP 辩论引擎使用的核心方法。
         完全挂载 OpenAI Native Tool Calling 协议。
+        兼容 DeepSeek Reasoner 思考模式：自动保留 reasoning_content 字段。
         """
+        # ── DeepSeek Reasoner 兼容处理：发送前清洗消息历史 ──
+        # 规则：assistant 消息若含 tool_calls，则 content 必须为字符串（不能是 None）
+        # 同时若历史中的 assistant 消息含 reasoning_content，必须原样保留
+        cleaned_messages = []
+        for msg in messages:
+            m = dict(msg)  # 浅拷贝避免修改原始对象
+            if m.get("role") == "assistant":
+                # content 不能为 None
+                if m.get("content") is None:
+                    m["content"] = ""
+            cleaned_messages.append(m)
+
         payload = {
             "model": self.model_name,
-            "messages": messages,
+            "messages": cleaned_messages,
             "stream": False
         }
         if tools:
@@ -411,6 +424,13 @@ class OpenAILLM(BaseLLM):
                 "role": message_obj.role,
                 "content": message_obj.content or ""
             }
+
+            # ── 关键修复：保留 DeepSeek Reasoner 的推理内容 ──
+            # reasoning_content 在 OpenAI SDK 中以属性方式附加到 message 对象上
+            reasoning = getattr(message_obj, "reasoning_content", None)
+            if reasoning:
+                ret["reasoning_content"] = reasoning
+
             if message_obj.tool_calls:
                 formatted_calls = []
                 for tc in message_obj.tool_calls:
@@ -427,6 +447,7 @@ class OpenAILLM(BaseLLM):
             
         except Exception as e:
             return {"role": "assistant", "content": f"[外部大脑短路: {e}]"}
+
 
     # --- 继承各类打针 Prompt 生成方法（因在 OllamaLLM 中已经抽离所以这里只需要将原本的搬借即可，鉴于 Python 类方法查找这里我们需要从原有的抽象剥离开，为了省事，将 _build_xxxx 方法提到 BaseLLM） 
 

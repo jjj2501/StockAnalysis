@@ -27,3 +27,8 @@ backend/data/
 
 # Databases
 *.db
+
+# 敏感环境变量与本地配置
+.env
+.env.*
+backend/data/llm_config.json

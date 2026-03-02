@@ -9,6 +9,7 @@
         { name: "模型训练", path: "/training", icon: "🧠" },
         { name: "投资组合", path: "/portfolio", icon: "💼" },
         { name: "智能预警", path: "/watchlist", icon: "🔔" },
+        { name: "因子实验室", path: "/ic", icon: "🧪" },
     ];
 
     const settingsItems = [
