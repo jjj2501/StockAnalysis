@@ -154,3 +154,146 @@ class TestDebateEngine:
         summary = engine.get_board_summary()
         assert "宏观面数据支持看多" in summary
         assert "波动率锥形态异常" in summary
+
+
+class TestCrossComments:
+    """交叉评论机制测试套件（v3.0 新增）"""
+
+    def test_post_cross_comment(self):
+        """交叉评论能正确写入黑板并计入多空票数"""
+        board = SharedBlackboard()
+        board.post_cross_comment(
+            "Macro Analyst", "Risk Control Agent",
+            "你的风控结论过于悲观，买入信号明显"
+        )
+
+        assert len(board.cross_comments) == 1
+        assert board.cross_comments[0]["from_agent"] == "Macro Analyst"
+        assert board.cross_comments[0]["to_agent"] == "Risk Control Agent"
+        assert board.bullish_votes > 0  # "买入" 关键词
+
+    def test_get_comments_on_agent(self):
+        """能正确获取针对特定 Agent 的评论"""
+        board = SharedBlackboard()
+        board.post_cross_comment("A", "B", "你的分析有盲点")
+        board.post_cross_comment("C", "B", "我同意 A 的质疑")
+        board.post_cross_comment("A", "C", "你的数据来源存疑")
+
+        comments_on_b = board.get_comments_on("B")
+        assert len(comments_on_b) == 2
+
+        comments_on_c = board.get_comments_on("C")
+        assert len(comments_on_c) == 1
+
+    def test_unreplied_comments(self):
+        """未回复评论过滤正确"""
+        board = SharedBlackboard()
+        board.post_cross_comment("A", "B", "你的分析有问题")
+        board.post_cross_comment("C", "B", "同意 A 的看法")
+
+        # 初始都未回复
+        unreplied = board.get_unreplied_comments_on("B")
+        assert len(unreplied) == 2
+
+        # 标记一条已回复后
+        board.mark_comment_responded("A", "B")
+        unreplied = board.get_unreplied_comments_on("B")
+        assert len(unreplied) == 1
+        assert unreplied[0]["from_agent"] == "C"
+
+    def test_cross_review_context(self):
+        """能正确为 Agent 组装交叉评论上下文"""
+        board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post("B", "B 的发言", round_num=0)
+        board.post_cross_comment("B", "A", "A 你的论据不足")
+
+        context = board.get_cross_review_context("A")
+        assert "B 的发言" in context
+        assert "A 你的论据不足" in context
+        assert "A 的发言" not in context  # 不该包含自己的发言
+
+    def test_should_continue_dialogue(self):
+        """未回复评论含分歧关键词时应继续对话"""
+        board = SharedBlackboard()
+        board.post_cross_comment("A", "B", "你的结论数据不支持，存疑")
+
+        # 有未回复的含分歧关键词的评论
+        assert board.should_continue_dialogue() is True
+
+        # 标记回复后不再触发
+        board.mark_comment_responded("A", "B")
+        assert board.should_continue_dialogue() is False
+
+    def test_should_not_continue_without_conflict(self):
+        """未回复评论不含分歧关键词时不应继续对话"""
+        board = SharedBlackboard()
+        board.post_cross_comment("A", "B", "我赞同你的中性分析")
+        assert board.should_continue_dialogue() is False
+
+    def test_get_peers_speeches(self):
+        """能正确获取除自身以外的同行发言"""
+        board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post("B", "B 的发言", round_num=0)
+        board.post("C", "C 的发言", round_num=0)
+
+        peers = board.get_peers_speeches("B")
+        assert "A" in peers
+        assert "C" in peers
+        assert "B" not in peers
+
+    def test_narrative_history_includes_cross_comments(self):
+        """叙事历史应包含交叉评论"""
+        board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post_cross_comment("B", "A", "不同意 A 的观点")
+
+        history = board.get_narrative_history()
+        assert len(history) == 2
+        assert history[1]["type"] == "cross_comment"
+
+
+class TestDebateEngineCrossReview:
+    """DebateEngine 交叉评论轮次管理测试套件（v3.0 新增）"""
+
+    def test_should_trigger_cross_review(self):
+        """有 >= 2 名 Agent 发言时应触发交叉评论"""
+        engine = DebateEngine(max_cross_review_rounds=1)
+        engine.record_speech("A", "A 的分析")
+        engine.record_speech("B", "B 的分析")
+
+        assert engine.should_trigger_cross_review() is True
+
+    def test_should_not_trigger_cross_review_single_agent(self):
+        """只有 1 名 Agent 发言时不应触发"""
+        engine = DebateEngine(max_cross_review_rounds=1)
+        engine.record_speech("A", "A 的分析")
+
+        assert engine.should_trigger_cross_review() is False
+
+    def test_should_not_exceed_max_cross_review_rounds(self):
+        """超过最大轮次后不应继续触发"""
+        engine = DebateEngine(max_cross_review_rounds=1)
+        engine.record_speech("A", "A 的分析")
+        engine.record_speech("B", "B 的分析")
+        engine.start_cross_review_round()
+
+        assert engine.should_trigger_cross_review() is False
+
+    def test_record_cross_comment(self):
+        """DebateEngine 记录交叉评论正常"""
+        engine = DebateEngine()
+        engine.record_cross_comment("A", "B", "不赞同 B 的结论")
+
+        assert len(engine.board.cross_comments) == 1
+
+    def test_final_consensus_includes_cross_review_rounds(self):
+        """最终共识报告应包含交叉评论轮次数"""
+        engine = DebateEngine(max_cross_review_rounds=2)
+        engine.record_speech("A", "买入信号明显")
+        engine.start_cross_review_round()
+
+        result = engine.get_final_consensus()
+        assert "cross_review_rounds" in result
+        assert result["cross_review_rounds"] == 1

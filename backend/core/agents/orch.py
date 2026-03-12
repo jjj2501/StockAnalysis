@@ -17,7 +17,9 @@ from backend.core.agents.prompts import (
     MACRO_ANALYST_PROMPT,
     QUANT_RESEARCHER_PROMPT,
     RISK_CONTROL_PROMPT,
-    PORTFOLIO_MANAGER_PROMPT
+    PORTFOLIO_MANAGER_PROMPT,
+    CROSS_REVIEW_PROMPT,
+    REBUTTAL_PROMPT
 )
 from backend.core.agents.base import ReActAgent
 from backend.core.agents.debate import DebateEngine
@@ -184,6 +186,105 @@ class AgentOrchestrator:
             debate.record_speech(agent.name, final_content)
             agent_speeches[agent.name] = final_content
             context_messages.append({"role": "assistant", "name": agent.name, "content": final_content})
+
+        # ==========================================
+        # Phase 2.5: 交叉评论 — 每个 Agent 定向点评同行观点
+        # ==========================================
+        if debate.should_trigger_cross_review():
+            cr_round = debate.start_cross_review_round()
+            yield _sse(
+                "Portfolio Manager", "typing",
+                f"\n\n🔍 **交叉评论第 {cr_round} 轮** — 各位专家请互相审阅并点评同行观点。\n\n",
+                extra={"event": "cross_review_start", "round": cr_round}
+            )
+
+            cross_review_speeches = {}  # 记录每个 Agent 的交叉评论内容
+
+            for agent in self.agents:
+                # 获取该 Agent 以外的其他同行发言
+                peers = debate.get_peers_speeches(agent.name)
+                if not peers:
+                    continue
+
+                yield _sse(
+                    agent.name, "typing",
+                    f"🔍 审阅同行观点中...\n\n",
+                    extra={"event": "cross_comment", "reviewing": list(peers.keys())}
+                )
+
+                review_content = ""
+                for step in agent.review_peers(peers, symbol, CROSS_REVIEW_PROMPT):
+                    stype = step.get("type")
+                    scontent = step.get("content", "")
+
+                    if stype == "cross_comment":
+                        yield _sse(agent.name, "typing", scontent, is_chunk=True)
+                        review_content += scontent
+                    elif stype == "cross_comment_done":
+                        review_content = scontent
+                    elif stype == "error":
+                        yield _sse(agent.name, "error", scontent, is_chunk=True)
+
+                yield _sse(agent.name, "done", "")
+
+                # 记录交叉评论到黑板（对每个同行都记录一条定向评论）
+                cross_review_speeches[agent.name] = review_content
+                for peer_name in peers:
+                    debate.record_cross_comment(agent.name, peer_name, review_content)
+                context_messages.append({
+                    "role": "assistant", "name": agent.name,
+                    "content": f"[交叉评论] {review_content}"
+                })
+
+            # ==========================================
+            # Phase 2.75: 回应评论 — 被评论方做出辩护或修正
+            # ==========================================
+            yield _sse(
+                "Portfolio Manager", "typing",
+                f"\n\n💬 **回应评论阶段** — 各位专家请回应同行对你的点评。\n\n",
+                extra={"event": "rebuttal_start", "round": cr_round}
+            )
+
+            for agent in self.agents:
+                # 获取针对该 Agent 的未回复评论
+                unreplied = debate.get_unreplied_comments_on(agent.name)
+                if not unreplied:
+                    continue
+
+                my_speech = agent_speeches.get(agent.name, "")
+
+                yield _sse(
+                    agent.name, "typing",
+                    f"💬 回应同行评论中...\n\n",
+                    extra={"event": "rebuttal",
+                           "commenters": [c["from_agent"] for c in unreplied]}
+                )
+
+                rebuttal_content = ""
+                for step in agent.respond_to_comments(
+                    unreplied, my_speech, symbol, REBUTTAL_PROMPT
+                ):
+                    stype = step.get("type")
+                    scontent = step.get("content", "")
+
+                    if stype == "rebuttal":
+                        yield _sse(agent.name, "typing", scontent, is_chunk=True)
+                        rebuttal_content += scontent
+                    elif stype == "rebuttal_done":
+                        rebuttal_content = scontent
+                    elif stype == "error":
+                        yield _sse(agent.name, "error", scontent, is_chunk=True)
+
+                yield _sse(agent.name, "done", "")
+
+                # 标记评论已回应，并记录回应内容到黑板
+                for c in unreplied:
+                    debate.mark_responded(c["from_agent"], agent.name)
+                debate.record_speech(agent.name, f"[回应评论] {rebuttal_content}")
+                context_messages.append({
+                    "role": "assistant", "name": agent.name,
+                    "content": f"[回应评论] {rebuttal_content}"
+                })
 
         # ==========================================
         # Phase 3: Portfolio Manager 初评 + 追加辩论

@@ -15,6 +15,7 @@
 
     // 辩论回合与共识评分
     let debateRound = $state(0);
+    let crossReviewRound = $state(0);
     /** @type {number|null} */
     let consensusScore = $state(null);
     let showRawData = $state(null);
@@ -67,6 +68,7 @@
         analyzing = true;
         chatLog = [];
         debateRound = 0;
+        crossReviewRound = 0;
         consensusScore = null;
 
         const es = new EventSource(
@@ -89,8 +91,59 @@
                         content:
                             data.event === "debate_round"
                                 ? `⚔️ 第 ${(data.round || 0) + 1} 轮追加辩论 — 发现显著分歧，决策层点名复盘`
-                                : `🔔 第 ${data.round || 1} 轮圆桐辩论开始`,
+                                : `🔔 第 ${data.round || 1} 轮圆桌辩论开始`,
                         round: data.round,
+                    });
+                    return;
+                }
+
+                // 交叉评论阶段分隔符
+                if (data.event === "cross_review_start") {
+                    crossReviewRound = data.round || 1;
+                    chatLog.push({
+                        role: "__divider__",
+                        status: "done",
+                        content: `🔍 交叉评论第 ${data.round || 1} 轮 — 各位专家互相审阅同行观点`,
+                        round: data.round,
+                        dividerType: "cross_review",
+                    });
+                    return;
+                }
+
+                // 回应评论阶段分隔符
+                if (data.event === "rebuttal_start") {
+                    chatLog.push({
+                        role: "__divider__",
+                        status: "done",
+                        content: `💬 回应评论阶段 — 各位专家回应同行的点评`,
+                        round: data.round,
+                        dividerType: "rebuttal",
+                    });
+                    return;
+                }
+
+                // 交叉评论气泡 — 带审阅对象标签
+                if (data.event === "cross_comment" && data.reviewing) {
+                    chatLog.push({
+                        role: data.role,
+                        status: data.status,
+                        content: data.content,
+                        reviewing: data.reviewing,
+                        msgType: "cross_comment",
+                        skills: [],
+                    });
+                    return;
+                }
+
+                // 回应评论气泡 — 带评论者标签
+                if (data.event === "rebuttal" && data.commenters) {
+                    chatLog.push({
+                        role: data.role,
+                        status: data.status,
+                        content: data.content,
+                        commenters: data.commenters,
+                        msgType: "rebuttal",
+                        skills: [],
                     });
                     return;
                 }
@@ -351,6 +404,13 @@
                 ⚔️ 已进行 {debateRound} 轮追加辩论
             </span>
         {/if}
+        {#if crossReviewRound > 0}
+            <span
+                class="text-xs text-indigo-400 border border-indigo-500/30 rounded-lg px-3 py-1.5"
+            >
+                🔍 已进行 {crossReviewRound} 轮交叉评论
+            </span>
+        {/if}
     </div>
 
     <!-- 瀑布流沙盘区 -->
@@ -378,16 +438,22 @@
 
         {#each chatLog as log}
             {#if log.role === "__divider__"}
-                <!-- 辩论回合分隔符 -->
+                <!-- 辩论回合/交叉评论分隔符 -->
+                {@const divColor =
+                    log.dividerType === "cross_review"
+                        ? "indigo"
+                        : log.dividerType === "rebuttal"
+                          ? "cyan"
+                          : "amber"}
                 <div
                     class="flex items-center gap-3 my-4 animate-in fade-in duration-500"
                 >
-                    <div class="flex-1 h-px bg-amber-500/20"></div>
+                    <div class="flex-1 h-px bg-{divColor}-500/20"></div>
                     <span
-                        class="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-full px-4 py-1.5 tracking-wide"
+                        class="text-xs font-bold text-{divColor}-400 bg-{divColor}-500/10 border border-{divColor}-500/30 rounded-full px-4 py-1.5 tracking-wide"
                         >{log.content}</span
                     >
-                    <div class="flex-1 h-px bg-amber-500/20"></div>
+                    <div class="flex-1 h-px bg-{divColor}-500/20"></div>
                 </div>
             {:else}
                 {@const meta = roleMeta[log.role] || {
@@ -429,6 +495,38 @@
                                 class="text-white/30 text-xs font-mono px-2 py-0.5 rounded bg-white/5"
                                 >{log.role}</span
                             >
+                            <!-- 交叉评论标签：审阅对象 -->
+                            {#if log.msgType === "cross_comment" && log.reviewing}
+                                <span
+                                    class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full flex items-center gap-1"
+                                >
+                                    🔍 审阅
+                                    {#each log.reviewing as peer, i}
+                                        <span class="font-bold"
+                                            >{roleMeta[peer]?.name ||
+                                                peer}</span
+                                        >{#if i < log.reviewing.length - 1}<span
+                                                >、</span
+                                            >{/if}
+                                    {/each}
+                                </span>
+                            {/if}
+                            <!-- 回应评论标签：评论者 -->
+                            {#if log.msgType === "rebuttal" && log.commenters}
+                                <span
+                                    class="text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full flex items-center gap-1"
+                                >
+                                    💬 回应
+                                    {#each log.commenters as commenter, i}
+                                        <span class="font-bold"
+                                            >{roleMeta[commenter]?.name ||
+                                                commenter}</span
+                                        >{#if i < log.commenters.length - 1}<span
+                                                >、</span
+                                            >{/if}
+                                    {/each}
+                                </span>
+                            {/if}
                             <!-- 技能强化徽章 -->
                             {#each log.skills || [] as skill}
                                 <span

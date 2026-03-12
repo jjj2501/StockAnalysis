@@ -125,3 +125,83 @@ class ReActAgent:
         
         if turn_count >= self.max_turns:
             yield {"type": "system_warning", "content": f"{self.name} 陷入了太深的逻辑死循环，被主持人强行拉回现实。"}
+
+    def review_peers(self, peers_speeches: Dict[str, str], symbol: str,
+                     review_prompt_template: str) -> Generator[Dict[str, Any], None, None]:
+        """
+        交叉评论模式：审阅同行发言并生成定向评论。
+
+        Args:
+            peers_speeches: {agent_name: speech_content} 字典
+            symbol: 标的代码
+            review_prompt_template: 交叉评论 Prompt 模板字符串
+
+        Yields:
+            与 run() 相同格式的步骤字典
+        """
+        # 组装同行发言摘要
+        peers_summary_lines = []
+        for peer_name, speech in peers_speeches.items():
+            peers_summary_lines.append(f"【{peer_name}】\n{speech}")
+        peers_summary = "\n---\n".join(peers_summary_lines)
+
+        # 填充 Prompt 模板
+        prompt = review_prompt_template.format(
+            agent_name=self.name,
+            symbol=symbol,
+            peers_speeches=peers_summary
+        )
+
+        # 使用流式生成（不走 Tool Calling 循环，交叉评论阶段不需要调用工具）
+        review_content = ""
+        try:
+            for chunk in self.llm.stream_generate(prompt):
+                yield {"type": "cross_comment", "content": chunk}
+                review_content += chunk
+        except Exception as e:
+            yield {"type": "error", "content": f"{self.name} 交叉评论生成失败: {e}"}
+
+        yield {"type": "cross_comment_done", "content": review_content}
+
+    def respond_to_comments(self, comments: List[Dict], my_previous_speech: str,
+                            symbol: str,
+                            rebuttal_prompt_template: str) -> Generator[Dict[str, Any], None, None]:
+        """
+        回应评论模式：阅读针对自己的评论并作出回应。
+
+        Args:
+            comments: 针对自己的评论列表 [{from_agent, comment, ...}, ...]
+            my_previous_speech: 自己之前的发言内容
+            symbol: 标的代码
+            rebuttal_prompt_template: 回应评论 Prompt 模板字符串
+
+        Yields:
+            与 run() 相同格式的步骤字典
+        """
+        if not comments:
+            return
+
+        # 组装评论摘要
+        comments_lines = []
+        for c in comments:
+            comments_lines.append(f"【来自 {c['from_agent']}】\n{c['comment']}")
+        comments_summary = "\n---\n".join(comments_lines)
+
+        # 填充 Prompt 模板
+        prompt = rebuttal_prompt_template.format(
+            agent_name=self.name,
+            symbol=symbol,
+            comments_on_me=comments_summary,
+            my_previous_speech=my_previous_speech[:500]  # 截断避免超长
+        )
+
+        # 使用流式生成
+        rebuttal_content = ""
+        try:
+            for chunk in self.llm.stream_generate(prompt):
+                yield {"type": "rebuttal", "content": chunk}
+                rebuttal_content += chunk
+        except Exception as e:
+            yield {"type": "error", "content": f"{self.name} 回应评论生成失败: {e}"}
+
+        yield {"type": "rebuttal_done", "content": rebuttal_content}
