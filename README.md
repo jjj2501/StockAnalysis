@@ -42,6 +42,24 @@ Integrates local **Ollama LLM** inside isolated environments, injecting complex 
 <tr>
 <td width="50%">
 
+### ⚔️ 多智能体作战室 / Multi-Agent Safari Room (v0.3 新增)
+搭载前沿的 **MCP (Model Context Protocol)** 动态工具与多轮辩论架构。宏观、量化、数据分析师与风控官四大 Agent 基于 ReAct 框架自治调查（实时查询并解析底层 yfinance/akshare 数据），在一线生成博弈线索后交由投资组合经理统一裁断决议。
+全面解锁模型限制：除了支持本地部署，现在也可零代码无缝挂接 **OpenAI, DeepSeek, 阿里通义** 等市面所有主流云端大模型 API。
+
+Empowered by **MCP (Model Context Protocol)** tools and multi-round debate architectures. Agent analysts autonomously investigate real-time market data via ReAct frameworks, resolving conflicts through debate and presenting final consensus. Now supports seamless integrations with **OpenAI, DeepSeek, Qwen** and other major cloud LLM APIs.
+
+</td>
+<td width="50%">
+
+### 🧠 记忆外脑与研报 RAG 检索 / RAG-Augmented Analysts (v0.4 新增)
+为基本面分析师与量化极客加装了 100% 物理隔离、断网运行的 **ChromaDB 向量冷库** 以及基于 `all-MiniLM-L6-v2` 的本地切片分词器引擎。
+当底层财务与技术指标无法解释反常异动时，特工会主动触发**研报检索探针 `search_financial_reports`**，到最新下发的数万字企业 10-K 公告、巨潮资讯与 Earnings Call 电话会议纪要原文中寻找管理层的“字里行间解释”，彻底打破了凭空捏造理由的“幻觉”。
+
+Upgraded Quantitative & Fundamental Analysts with 100% offline **ChromaDB Vector Storage** and a localized `all-MiniLM-L6-v2` embedding engine. Through the custom MCP tool `search_financial_reports`, agents can autonomously dive into dense 10-K filings, earnings call transcripts, and corporate announcements to retrieve exact sentences summarizing management's rationale for financial anomalies, effectively eradicating AI hallucinations.
+
+</td>
+<td width="50%">
+
 ### 📊 五维量化因子分析 / 5-D Factor Analysis
 实时获取 A 股**技术指标 · 基本面 · 市场情绪 · 北上资金 · 新闻舆情**五大类因子数据，并基于关键词 NLP 情感分析生成多空信号，为决策提供全方位数据支撑。
 

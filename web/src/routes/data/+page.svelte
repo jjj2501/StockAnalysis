@@ -7,6 +7,18 @@
     let actionLoading = false;
     let errorMsg = "";
 
+    // Tabs 架构
+    let activeTab = "kline"; // 'kline' | 'factor' | 'macro'
+    $: klineFiles = files.filter((f) => f.type === "kline" || !f.type);
+    $: factorFiles = files.filter((f) => f.type === "factor");
+    $: macroFiles = files.filter((f) => f.type === "macro");
+    $: currentFiles =
+        activeTab === "kline"
+            ? klineFiles
+            : activeTab === "factor"
+              ? factorFiles
+              : macroFiles;
+
     // 手工上传状态
     let fileInput;
     let uploadSymbol = "";
@@ -71,6 +83,62 @@
             await loadCache();
         } catch (err) {
             alert(`强制更新失败: ${err.message}`);
+        } finally {
+            actionLoading = false;
+        }
+    }
+
+    async function handleForceFetchFactors(symbol, market) {
+        if (
+            !confirm(
+                `确定要强制清空旧档并请求外部重刷 ${symbol} 的最新全维度基本面与情绪因子吗？耗时较久（约 10~15 秒）。`,
+            )
+        )
+            return;
+        actionLoading = true;
+        try {
+            const res = await fetch("/api/data/fetch_factors", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ symbol, market }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || "因子更新失败");
+            }
+            const data = await res.json();
+            alert(`因子刷新成功！包含键: ${data.keys.join(", ")}`);
+            await loadCache();
+        } catch (err) {
+            alert(`因子强制更新失败: ${err.message}`);
+        } finally {
+            actionLoading = false;
+        }
+    }
+
+    async function handleForceFetchMacro(market) {
+        if (
+            !confirm(
+                `确定要强制更新大盘 [${market}] 的全体宏观经济指标（LPR/非农等）吗？`,
+            )
+        )
+            return;
+        actionLoading = true;
+        try {
+            const res = await fetch("/api/data/fetch_macro", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ market: market }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || "宏观预热失败");
+            }
+            const data = await res.json();
+            alert(`宏观事件预热成功！捕获到: ${data.keys.join(", ")}`);
+            await loadCache();
+        } catch (err) {
+            alert(`宏观强制预热失败: ${err.message}`);
         } finally {
             actionLoading = false;
         }
@@ -193,6 +261,37 @@
             </div>
         {/if}
 
+        <!-- Tab 切换 -->
+        <div class="flex gap-4 border-b border-white/10 px-6 pt-4 mb-2">
+            <button
+                class="px-4 py-3 font-medium transition-all {activeTab ===
+                'kline'
+                    ? 'border-b-2 border-primary-500 text-primary-400'
+                    : 'text-white/50 hover:text-white'}"
+                on:click={() => (activeTab = "kline")}
+            >
+                📈 K线时序源数据库 ({klineFiles.length})
+            </button>
+            <button
+                class="px-4 py-3 font-medium transition-all {activeTab ===
+                'factor'
+                    ? 'border-b-2 border-primary-500 text-primary-400'
+                    : 'text-white/50 hover:text-white'}"
+                on:click={() => (activeTab = "factor")}
+            >
+                🧬 全维量化因子 JSON ({factorFiles.length})
+            </button>
+            <button
+                class="px-4 py-3 font-medium transition-all {activeTab ===
+                'macro'
+                    ? 'border-b-2 border-primary-500 text-primary-400'
+                    : 'text-white/50 hover:text-white'}"
+                on:click={() => (activeTab = "macro")}
+            >
+                🏛️ 大盘宏观事件字典 ({macroFiles.length})
+            </button>
+        </div>
+
         {#if loading && files.length === 0}
             <div
                 class="py-12 flex flex-col items-center justify-center text-white/40"
@@ -202,16 +301,20 @@
                 ></div>
                 <p>扫描庞大的底层资产库...</p>
             </div>
-        {:else if files.length === 0}
+        {:else if currentFiles.length === 0}
             <div
-                class="py-12 text-center text-white/40 border border-dashed border-white/10 rounded-xl bg-white/5"
+                class="py-12 text-center text-white/40 border border-dashed border-white/10 rounded-xl bg-white/5 mx-6 mb-6"
             >
                 <p class="text-4xl mb-3">📭</p>
-                <p>缓存池深不可测，但是现在底空空如也。</p>
-                <p class="text-sm mt-2">前往因子分析或尝试强制刷新一个标的！</p>
+                <p>当前分区缓存池深不可测，但是底空空如也。</p>
+                <p class="text-sm mt-2">
+                    一旦触发过包含该维度的因子分析或者预热后，底层文件即会落盘在此。
+                </p>
             </div>
         {:else}
-            <div class="overflow-x-auto rounded-xl border border-white/5">
+            <div
+                class="overflow-x-auto rounded-xl border border-white/5 m-6 mt-2"
+            >
                 <table class="w-full text-left text-sm whitespace-nowrap">
                     <thead class="bg-white/5 text-white/60">
                         <tr>
@@ -227,7 +330,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
-                        {#each files as file (file.filename)}
+                        {#each currentFiles as file (file.filename)}
                             <tr class="hover:bg-white/[0.02] transition-colors">
                                 <td class="px-6 py-4">
                                     {#if marketConfig[file.market]}
@@ -262,21 +365,55 @@
                                     <div
                                         class="flex items-center justify-end gap-2"
                                     >
-                                        <button
-                                            on:click={() =>
-                                                handleForceFetch(
-                                                    file.symbol,
-                                                    file.market,
-                                                )}
-                                            disabled={actionLoading}
-                                            class="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors group"
-                                            title="强制重新从外部拉取并清洗数据"
-                                        >
-                                            <span
-                                                class="group-hover:rotate-180 transition-transform duration-500 inline-block"
-                                                >🔄</span
+                                        {#if activeTab === "kline"}
+                                            <button
+                                                on:click={() =>
+                                                    handleForceFetch(
+                                                        file.symbol,
+                                                        file.market,
+                                                    )}
+                                                disabled={actionLoading}
+                                                class="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors group"
+                                                title="重取最新的 K线数据并覆写"
                                             >
-                                        </button>
+                                                <span
+                                                    class="group-hover:rotate-180 transition-transform duration-500 inline-block"
+                                                    >🔄</span
+                                                >
+                                            </button>
+                                        {:else if activeTab === "factor"}
+                                            <button
+                                                on:click={() =>
+                                                    handleForceFetchFactors(
+                                                        file.symbol,
+                                                        file.market,
+                                                    )}
+                                                disabled={actionLoading}
+                                                class="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors group"
+                                                title="强刷个股的基本面与高维因子字典"
+                                            >
+                                                <span
+                                                    class="group-hover:rotate-180 transition-transform duration-500 inline-block"
+                                                    >🔄</span
+                                                >
+                                            </button>
+                                        {:else if activeTab === "macro"}
+                                            <button
+                                                on:click={() =>
+                                                    handleForceFetchMacro(
+                                                        file.market,
+                                                    )}
+                                                disabled={actionLoading}
+                                                class="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors group"
+                                                title="重置全盘市场宏观指标"
+                                            >
+                                                <span
+                                                    class="group-hover:rotate-180 transition-transform duration-500 inline-block"
+                                                    >🔄</span
+                                                >
+                                            </button>
+                                        {/if}
+
                                         <button
                                             on:click={() =>
                                                 handleDelete(file.filename)}

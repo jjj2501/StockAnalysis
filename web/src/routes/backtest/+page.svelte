@@ -36,6 +36,15 @@
     let aiReport = $state("");
     let aiLoading = $state(false);
 
+    // 全局大模型配置
+    let llmProvider = "ollama";
+    let modelName = "qwen3:1.7b";
+
+    onMount(() => {
+        llmProvider = localStorage.getItem("llmProvider") || "ollama";
+        modelName = localStorage.getItem("modelName") || "qwen3:1.7b";
+    });
+
     /** @type {HTMLCanvasElement|null} */
     let chartCanvas = $state(null);
     /** @type {any} */
@@ -150,6 +159,8 @@
                     symbol: result.symbol,
                     strategy: result.strategy,
                     summary: result.result.summary,
+                    provider: llmProvider,
+                    model: modelName,
                 }),
             });
             if (!res.ok) throw new Error("分析请求失败");

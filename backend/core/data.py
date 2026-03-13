@@ -130,6 +130,37 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"保存缓存失败 {cache_path}: {e}")
             return False
+            
+    def _get_factor_cache_path(self, symbol: str, market: str = "CN") -> Path:
+        """获取指定股票代码的按日全维因子综合缓存路径"""
+        factors_dir = self.cache_dir / "factors"
+        factors_dir.mkdir(parents=True, exist_ok=True)
+        return factors_dir / f"{market}_{symbol}.json"
+
+    def _load_factor_cache(self, symbol: str, market: str = "CN") -> Optional[dict]:
+        """从本地加载最新的因子缓存 JSON"""
+        import json
+        cache_path = self._get_factor_cache_path(symbol, market)
+        if cache_path.exists():
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return data
+            except Exception as e:
+                logger.warning(f"读取因子缓存失败 {cache_path}: {e}")
+        return None
+
+    def _save_factor_cache(self, symbol: str, data: dict, market: str = "CN") -> bool:
+        """把完整因子报告落地成 JSON 缓存"""
+        import json
+        cache_path = self._get_factor_cache_path(symbol, market)
+        try:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            logger.warning(f"保存因子缓存失败 {cache_path}: {e}")
+            return False
     
     def _fetch_from_remote(self, symbol: str, start_date: str, end_date: str, market: str = "CN") -> pd.DataFrame:
         """从远程 API 获取数据 (按市场路由策略)"""
@@ -191,7 +222,16 @@ class DataFetcher:
                 
             logger.info(f"从 yfinance 获取 {yf_symbol} ({market}): {start_dt} - {end_dt}")
             self._clear_proxy()
-            df = yf.download(yf_symbol, start=start_dt, end=end_dt, progress=False)
+            
+            executor = ThreadPoolExecutor(max_workers=1)
+            try:
+                future = executor.submit(yf.download, yf_symbol, start=start_dt, end=end_dt, progress=False)
+                df = future.result(timeout=15)
+            except Exception as timeout_err:
+                logger.warning(f"yfinance 请求超时（15s）{yf_symbol}: {timeout_err}")
+                return pd.DataFrame()
+            finally:
+                executor.shutdown(wait=False)
             
             if df is None or df.empty:
                 logger.warning(f"yfinance 无数据: {yf_symbol}")
@@ -417,7 +457,7 @@ class DataFetcher:
 
     def get_comprehensive_factors(self, symbol: str, categories: Optional[List[str]] = None) -> dict:
         """
-        获取综合量化因子报告 (支持分类加载与并发抓取)
+        获取综合量化因子报告 (支持本地短效缓存按需组装及并发抓取)
         :param symbol: 股票代码
         :param categories: 因子类别列表 (None 代表获取全部)
         """
@@ -426,53 +466,92 @@ class DataFetcher:
             logger.info(f"因子计算推断市场: {symbol} -> {clean_symbol} ({market})")
             
             # 默认类别
-            all_cats = ['technical', 'fundamental', 'sentiment', 'alternative', 'news']
+            all_cats = ['technical', 'fundamental', 'sentiment', 'alternative', 'news', 'macro']
             target_cats = categories if categories else all_cats
             
-            # 预先获取技术指标所需数据
-            # 至少需要 seq_length (20) + 指标计算所需的最大窗口 (20 for BB) = 40 天数据
-            # 为了安全，取 60 天
-            _, df_for_tech_sentiment = self.get_recent_data(clean_symbol, market=market, seq_length=60)
+            import datetime
+            today_str = datetime.datetime.now().strftime('%Y-%m-%d')
             
-            # 使用字典保存需要执行的任务
-            futures = {}
+            # --- 读取本地因子综合缓存 ---
+            cached_data = self._load_factor_cache(clean_symbol, market)
+            
             results = {}
-            executor = ThreadPoolExecutor(max_workers=5)
-            try:
-                if "technical" in target_cats or "sentiment" in target_cats:
-                    futures["tech_and_sentiment"] = executor.submit(self._fetch_tech_and_sentiment, clean_symbol, market)
-                if "fundamental" in target_cats:
-                    futures["fundamental"] = executor.submit(self._fetch_fundamental, clean_symbol, market, symbol)
-                if "alternative" in target_cats:
-                    futures["alternative"] = executor.submit(self._fetch_alternative_factors, clean_symbol, market)
-                if "news" in target_cats:
-                    futures["news"] = executor.submit(self._fetch_news, symbol)
+            cats_to_fetch = []
+            
+            # 判断缓存有效性与缺失情况
+            if cached_data and cached_data.get("update_date") == today_str:
+                logger.info(f"命中因子今日本地缓存 {market}-{clean_symbol}")
+                for cat in target_cats:
+                    # 如果缓存中该类别数据存在且无 error，则直接命中复用（空字典亦代表今日已尝试拉取但无数据，避免击穿）
+                    if cat in cached_data and isinstance(cached_data[cat], dict) and "error" not in cached_data[cat]:
+                        results[cat] = cached_data[cat]
+                    else:
+                        cats_to_fetch.append(cat)
+                        
+                if "data_date" in cached_data:
+                    results["data_date"] = cached_data["data_date"]
+            else:
+                logger.info(f"无命中或缓存非当日，触发全网拉网更新机制 {market}-{clean_symbol}")
+                cats_to_fetch = target_cats
+                cached_data = {}  # 弃用过期缓存防止混淆
+            
+            # --- 需拉取且确实存在的增量补抓 ---
+            if cats_to_fetch:
+                # 若需要技术或情绪，需前置拉取历史最近序列备用
+                if "technical" in cats_to_fetch or "sentiment" in cats_to_fetch:
+                    _, df_for_tech_sentiment = self.get_recent_data(clean_symbol, market=market, seq_length=60)
+                
+                futures = {}
+                executor = ThreadPoolExecutor(max_workers=6)
+                try:
+                    if "technical" in cats_to_fetch or "sentiment" in cats_to_fetch:
+                        futures["tech_and_sentiment"] = executor.submit(self._fetch_tech_and_sentiment, clean_symbol, market)
+                    if "fundamental" in cats_to_fetch:
+                        futures["fundamental"] = executor.submit(self._fetch_fundamental, clean_symbol, market, symbol)
+                    if "alternative" in cats_to_fetch:
+                        futures["alternative"] = executor.submit(self._fetch_alternative_factors, clean_symbol, market)
+                    if "macro" in cats_to_fetch:
+                        futures["macro"] = executor.submit(self._fetch_macro, market)
+                    if "news" in cats_to_fetch:
+                        futures["news"] = executor.submit(self._fetch_news_sentiment, symbol)
 
-                for factor_type, future in futures.items():
-                    try:
-                        res = future.result(timeout=12) # 施加最高 12s 的硬超时来强制收尾总装
-                        if isinstance(res, dict):
-                            results.update(res)
-                    except Exception as e:
-                        logger.error(f"获取 {factor_type} 因子超时或失败: {e}")
-                        results[factor_type] = {"error": str(e)}
-            finally:
-                executor.shutdown(wait=False)
+                    for factor_type, future in futures.items():
+                        try:
+                            # 施加最高 25s 硬超时抵挡彻底不响应陷阱
+                            res = future.result(timeout=25) 
+                            if isinstance(res, dict):
+                                results.update(res)
+                        except Exception as e:
+                            logger.error(f"获取 {factor_type} 因子超时或失败: {e}")
+                            results[factor_type] = {"error": str(e)}
+                finally:
+                    executor.shutdown(wait=False)
 
-            # 整理返回格式
+            # --- 整理收工交付格式 ---
             final_report = {
                 "symbol": symbol,
-                "date": datetime.datetime.now().strftime('%Y-%m-%d'), 
+                "update_date": today_str,
+                "date": today_str, 
                 "technical": results.get("technical", {}),
                 "sentiment": results.get("sentiment", {}),
                 "fundamental": results.get("fundamental", {}),
                 "alternative": results.get("alternative", {}),
+                "macro": results.get("macro", {}),
                 "news": results.get("news", {})
             }
             
-            # 如果是从技术面任务获取的日期，则使用真实数据日期
             if "data_date" in results:
+                final_report["data_date"] = results["data_date"]
                 final_report["date"] = results["data_date"]
+                
+            # --- 补全未请求字段做完整底图落盘 ---
+            if cached_data and cached_data.get("update_date") == today_str:
+                for cat in all_cats:
+                    if cat not in target_cats and cat in cached_data:
+                        final_report[cat] = cached_data[cat]
+            
+            # --- 保存为 JSON 当日缓存 ---
+            self._save_factor_cache(clean_symbol, final_report, market)
 
             return final_report
             
@@ -513,88 +592,214 @@ class DataFetcher:
             return {}
 
     def _fetch_fundamental(self, symbol: str, market: str = "CN", original_symbol: str = "") -> dict:
-        """获取基本面因子（使用个股信息接口或雅虎财经获取基础数据）"""
+        """获取基本面因子（统一使用雅虎财经保障高可用获取基础数据）"""
         try:
-            if market != "CN":
-                import yfinance as yfi
-                yf_sym = symbol if market != "HK" or symbol.endswith(".HK") else f"{symbol}.HK"
-                tick = yfi.Ticker(yf_sym)
-                
-                info = {}
-                executor = ThreadPoolExecutor(max_workers=1)
-                try:
-                    future = executor.submit(lambda: tick.info)
-                    info = future.result(timeout=4)  # 严格限制 4s
-                except Exception as e:
-                    logger.warning(f"获取 {yf_sym} info 失败/超时，将启用 fast_info 补偿: {e}")
-                finally:
-                    executor.shutdown(wait=False)
-                
-                mcap = info.get("marketCap", 0)
-                latest_price = info.get("currentPrice", info.get("previousClose", 0))
-                
-                # 若无 mcap（比如网络阻断被降级）则启用轻量级路由 fast_info
-                if not mcap:
-                    try:
-                        fast = tick.fast_info
-                        mcap = getattr(fast, 'market_cap', 0)
-                        latest_price = getattr(fast, 'last_price', getattr(fast, 'previous_close', 0))
-                    except Exception as e:
-                        logger.warning(f"获取 {yf_sym} fast_info 失败: {e}")
-
-                if mcap == 0 and latest_price == 0:
-                    logger.warning(f"彻底无法获取外股 {yf_sym} 的基本面数据，返回空值。")
-                    return {}
-
-                return {"fundamental": {
-                    "PE": {"value": round(info.get("trailingPE", 0), 2) if info.get("trailingPE") else 0, "signal": ""},
-                    "PB": {"value": round(info.get("priceToBook", 0), 2) if info.get("priceToBook") else 0, "signal": ""},
-                    "MarketCap": {"value": round(mcap / 1e8, 2) if mcap else 0, "unit": "亿市值" if market=="HK" else "亿本币", "signal": "大盘股" if mcap > 1e11 else "小盘股"},
-                    "FlowCap": {"value": 0, "unit": "亿", "signal": "暂缺"},
-                    "LatestPrice": {"value": round(float(latest_price), 2) if latest_price else 0, "unit": "本币", "signal": ""},
-                    "Industry": {"value": info.get("industry", "未知"), "signal": info.get("sector", "")}
-                }}
-
-            self._clear_proxy()
-            # 使用超时控制获取个股基础信息
+            import yfinance as yfi
+            
+            # 处理不同市场的后缀
+            yf_sym = symbol
+            if market == "HK" and not symbol.endswith(".HK"):
+                yf_sym = f"{symbol}.HK"
+            elif market == "CN":
+                # A 股区分深沪两市
+                if symbol.startswith("6"):
+                    yf_sym = f"{symbol}.SS"
+                else:
+                    yf_sym = f"{symbol}.SZ"
+                    
+            tick = yfi.Ticker(yf_sym)
+            
+            info = {}
+            fast_mcap = 0
+            fast_price = 0
             executor = ThreadPoolExecutor(max_workers=1)
             try:
-                future = executor.submit(ak.stock_individual_info_em, symbol=original_symbol or symbol)
-                info_df = future.result(timeout=8)
-            except Exception as timeout_err:
-                logger.warning(f"基本面数据请求超时（8s）{symbol}: {timeout_err}")
-                return {}
+                # 给大而全的 tick.info 和小而美的 tick.fast_info 双层保险获取都加上强制拦截限时
+                def get_yf_info():
+                    i = tick.info
+                    # 提前做一下备胎数据的嗅探存活
+                    try:
+                        f = tick.fast_info
+                        fm = getattr(f, 'market_cap', 0)
+                        fp = getattr(f, 'last_price', getattr(f, 'previous_close', 0))
+                        return i, fm, fp
+                    except:
+                        return i, 0, 0
+                
+                future = executor.submit(get_yf_info)
+                info, fast_mcap, fast_price = future.result(timeout=10)  # 严格限制 10s
+            except Exception as e:
+                logger.warning(f"获取 {yf_sym} info 失败/超时，API 网络受阻降级: {e}")
             finally:
                 executor.shutdown(wait=False)
             
-            if info_df is None or info_df.empty:
-                logger.warning(f"基本面数据为空: {symbol}")
+            mcap = info.get("marketCap", 0)
+            latest_price = info.get("currentPrice", info.get("previousClose", 0))
+            pe = info.get("trailingPE", 0)
+            pb = info.get("priceToBook", 0)
+            
+            # 若无 mcap（比如网络阻断被降级）则启用轻量级路由 fast_info 保存的值
+            if not mcap and fast_mcap:
+                mcap = fast_mcap
+            if not latest_price and fast_price:
+                latest_price = fast_price
+
+            if not mcap and not latest_price:
+                logger.warning(f"彻底无法获取个股 {yf_sym} 的基本面数据，返回空值。")
                 return {}
             
-            # 转为字典
-            info_dict = dict(zip(info_df.iloc[:, 0], info_df.iloc[:, 1]))
-            logger.info(f"基本面字段: {list(info_dict.keys())}")
-            
-            # 提取可用指标
-            market_cap_raw = self._safe_float(info_dict, ['总市值'], 0)
-            market_cap = market_cap_raw / 1e8 if market_cap_raw > 1e6 else market_cap_raw
-            flow_cap_raw = self._safe_float(info_dict, ['流通市值'], 0)
-            flow_cap = flow_cap_raw / 1e8 if flow_cap_raw > 1e6 else flow_cap_raw
-            latest_price = self._safe_float(info_dict, ['最新'], 0)
-            total_shares = self._safe_float(info_dict, ['总股本'], 0)
-            
-            # 从最新价和总股本反推简易估值（总市值/净利润近似，此处仅提供市值数据）
+            # 安全类型转换
+            pe_val = float(pe) if pe is not None else 0.0
+            pb_val = float(pb) if pb is not None else 0.0
+            mcap_val = float(mcap) if mcap is not None else 0.0
+            price_val = float(latest_price) if latest_price is not None else 0.0
+
             return {"fundamental": {
-                "PE": {"value": 0, "signal": "暂无数据"},  # PE 需要净利润数据，当前接口无法提供
-                "PB": {"value": 0, "signal": "暂无数据"},  # PB 需要净资产数据
-                "MarketCap": {"value": round(market_cap, 2), "unit": "亿", "signal": "大盘股" if market_cap_raw > 1e11 else "小盘股"},
-                "FlowCap": {"value": round(flow_cap, 2), "unit": "亿", "signal": ""},
-                "LatestPrice": {"value": latest_price, "unit": "元", "signal": ""},
-                "Industry": {"value": str(info_dict.get('行业', '未知')), "signal": ""}
+                "PE": {"value": round(pe_val, 2), "signal": "高估" if pe_val > 50 else "低估" if 0 < pe_val < 15 else "合理" if pe_val > 0 else "暂无数据"},
+                "PB": {"value": round(pb_val, 2), "signal": "破净" if 0 < pb_val < 1 else "" if pb_val > 0 else "暂无数据"},
+                "MarketCap": {"value": round(mcap_val / 1e8, 2) if mcap_val else 0, "unit": "亿市值" if market=="HK" else "亿本币", "signal": "大盘股" if mcap_val > 1e11 else "小盘股"},
+                "FlowCap": {"value": 0, "unit": "亿", "signal": "暂缺"},
+                "LatestPrice": {"value": round(price_val, 2), "unit": "本币", "signal": ""},
+                "Industry": {"value": info.get("industry", "未知"), "signal": info.get("sector", "")}
             }}
         except Exception as e:
             logger.warning(f"获取基本面数据失败: {e}")
             return {}
+
+    def get_macro_data(self, market: str = "CN") -> dict:
+        """
+        获取全局层面的宏观政策与经济数据，内置按日维度的全局缓存
+        不再因为每个个股重复查询而触发限流。
+        :param market: 市场枚举 (CN 或 US 等)
+        """
+        import json
+        import datetime
+        from pathlib import Path
+        
+        main_market = "CN" if market == "CN" else "US" # 将 HK 等非A股映射回美国宏观大盘
+        
+        macro_dir = self.cache_dir / "macro"
+        macro_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = macro_dir / f"macro_{main_market}.json"
+        
+        today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        
+        # --- 1. 读取本地全局大盘缓存储存 ---
+        if cache_path.exists():
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    cached = json.load(f)
+                if cached.get("update_date") == today_str and "data" in cached:
+                    logger.info(f"命中全局宏观经济缓存: {main_market}")
+                    return cached["data"]
+            except Exception as e:
+                logger.warning(f"读取全局宏观缓存失败 {cache_path}: {e}")
+                
+        # --- 2. 触发真实的大盘宏观外网采集 ---
+        logger.info(f"触发全局宏观拉网更新机制: {main_market}")
+        macro_data = {}
+        
+        def _fetch_safe(func):
+            try:
+                # 外部 (scheduler.py) 已通过 asyncio.to_thread(_update_all_caches) 将其放入后台线程池
+                # 这里无需再嵌套创建新的 ThreadPoolExecutor 反复消耗系统句柄，易引发死锁
+                return func()
+            except Exception as e:
+                logger.warning(f"获取宏观数据失败 {func.__name__}: {e}")
+                return None
+
+        if main_market == "CN":
+            def get_lpr():
+                df = ak.macro_china_lpr()
+                if not df.empty:
+                    last_row = df.iloc[-1]
+                    val = float(last_row.get("LPR1Y", last_row.iloc[1]))
+                    prev_val = float(df.iloc[-2].get("LPR1Y", df.iloc[-2].iloc[1])) if len(df) > 1 else val
+                    signal = "宽松落地" if val < prev_val else ("加息紧缩" if val > prev_val else "按兵不动")
+                    return {"value": val, "unit": "%", "signal": signal}
+                return {}
+            def get_m2():
+                df = ak.macro_china_money_supply()
+                if not df.empty:
+                    last_row = df.iloc[-1]
+                    val = float(last_row.iloc[1]) # 根据最新版本的输出结构获取 M2 同比
+                    signal = "流动性充裕" if val > 8 else "流动性收紧"
+                    return {"value": val, "unit": "%", "signal": signal}
+                return {}
+            def get_pmi():
+                df = ak.macro_china_pmi()
+                if not df.empty:
+                    last_row = df.iloc[-1]
+                    val = float(last_row.iloc[1])
+                    signal = "扩张" if val >= 50 else "收缩"
+                    return {"value": val, "unit": "", "signal": signal}
+                return {}
+
+            res_lpr = _fetch_safe(get_lpr)
+            res_m2 = _fetch_safe(get_m2)
+            res_pmi = _fetch_safe(get_pmi)
+            if res_lpr: macro_data["China_LPR_1Y"] = res_lpr
+            if res_m2: macro_data["China_M2_Yoy"] = res_m2
+            if res_pmi: macro_data["China_PMI"] = res_pmi
+
+        elif main_market == "US":
+            def get_nonfarm():
+                df = ak.macro_usa_non_farm()
+                if not df.empty:
+                    last_row = df.iloc[-1]
+                    val = float(last_row.iloc[2] if len(last_row)>2 else last_row.iloc[-1]) 
+                    signal = "就业强劲/降息承压" if val > 15 else "就业降温/利好降息"
+                    return {"value": val, "unit": "万人", "signal": signal}
+                return {}
+            def get_cpi():
+                df = ak.macro_usa_cpi_monthly()
+                if not df.empty:
+                    last_row = df.iloc[-1]
+                    val = float(last_row.iloc[2] if len(last_row)>2 else last_row.iloc[-1])
+                    signal = "通胀顽固" if val > 3 else "通胀降温"
+                    return {"value": val, "unit": "%", "signal": signal}
+                return {}
+            def get_jobless():
+                df = ak.macro_usa_initial_jobless()
+                if not df.empty:
+                    last_row = df.iloc[-1]
+                    val = float(last_row.iloc[2] if len(last_row)>2 else last_row.iloc[-1])
+                    signal = "衰退交易" if val > 25 else "就业稳健"
+                    return {"value": val, "unit": "万人", "signal": signal}
+                return {}
+            
+            res_nonfarm = _fetch_safe(get_nonfarm)
+            res_cpi = _fetch_safe(get_cpi)
+            res_jobless = _fetch_safe(get_jobless)
+            if res_nonfarm: macro_data["US_Non_Farm"] = res_nonfarm
+            if res_cpi: macro_data["US_CPI_Yoy"] = res_cpi
+            if res_jobless: macro_data["US_Initial_Jobless"] = res_jobless
+
+        # --- 3. 结果入库并返回 ---
+        try:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump({"update_date": today_str, "data": macro_data}, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"保存全局宏观缓存失败 {cache_path}: {e}")
+            
+        return macro_data
+
+    def _fetch_macro(self, market: str) -> dict:
+        """获取宏观政策与经济数据"""
+        macro_data = self.get_macro_data(market)
+        return {"macro": macro_data} if macro_data else {}
+
+    def _fetch_technical(self, symbol: str) -> dict:
+        """从综合因子大盘里抽出技术指标给到探针"""
+        try:
+            full_factors = self.get_comprehensive_factors(symbol, categories=["technical", "sentiment"])
+            if "technical" in full_factors:
+                return {"technical": full_factors["technical"]}
+            return {"error": "未查得技术面均线与波动指标"}
+        except Exception as e:
+            import logging
+            logging.warning(f"拉取技术指标集报错: {e}")
+            return {"error": str(e)}
 
     def _fetch_alternative_factors(self, symbol: str, market: str = "CN") -> dict:
         """获取另类因子（含北向资金及底层席位架构分解）"""
@@ -613,13 +818,13 @@ class DataFetcher:
             try:
                 # 1. 优先尽力拉取真实的北上大盘总量
                 future = executor.submit(ak.stock_hsgt_individual_em, symbol=symbol)
-                hsgt_df = future.result(timeout=8)  # 8 秒超时
+                hsgt_df = future.result(timeout=15)  # 15 秒超时
                 if hsgt_df is not None and not hsgt_df.empty:
                     latest = hsgt_df.iloc[0]
                     holding_ratio = self._safe_col_float(latest, ['持股数量占A股百分比', '持股比例', '持股比例(%)', '比例', '占比'], 0)
                     net_buy = self._safe_col_float(latest, ['今日增持资金', '当日增持市值', '当日增持估计净买额', '增持市值', '净买额'], 0)
             except Exception as timeout_err:
-                logger.warning(f"北上资金总盘请求超时或受阻（8s）{symbol}: {timeout_err}")
+                logger.warning(f"北上资金总盘请求超时或受阻（15s）{symbol}: {timeout_err}")
             finally:
                 executor.shutdown(wait=False)
                 
@@ -652,7 +857,7 @@ class DataFetcher:
             logger.warning(f"获取另类因子数据失败: {e}")
             return {"alternative": {}}
 
-    def _fetch_news(self, symbol: str) -> dict:
+    def _fetch_news_sentiment(self, symbol: str) -> dict:
         """获取个股新闻因子（最新 10 条新闻 + 情感摘要）"""
         try:
             self._clear_proxy()

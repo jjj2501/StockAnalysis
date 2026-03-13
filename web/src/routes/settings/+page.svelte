@@ -10,6 +10,8 @@
     let loading = $state(true);
     let saving = $state(false);
     let saveMsg = $state("");
+    let testingConnection = $state(false);
+    let testMsg = $state("");
 
     // 可编辑参数
     let batchSize = $state(32);
@@ -19,19 +21,31 @@
     let numLayers = $state(2);
     let seqLength = $state(60);
 
+    // AI 模型配置
+    let llmProvider = $state("ollama"); // 设置页这里的下拉框可以暂定为 default 毕竟如果真的用外部 API 这里用户会重选
+    let modelName = $state("qwen3:1.7b");
+    let llmApiKey = $state("");
+    let llmBaseUrl = $state("");
+
     onMount(async () => {
+        // 从浏览器本地恢复 LLM 设置偏好
+        llmProvider = localStorage.getItem("llmProvider") || "ollama";
+        modelName = localStorage.getItem("modelName") || "qwen3:1.7b";
+
         await loadDeviceInfo();
     });
 
     async function loadDeviceInfo() {
         loading = true;
         try {
-            const [statusRes, configRes] = await Promise.all([
+            const [statusRes, configRes, llmRes] = await Promise.all([
                 fetch("/api/gpu/status"),
                 fetch("/api/gpu/config/current"),
+                fetch("/api/config/llm"),
             ]);
             gpuStatus = await statusRes.json();
             config = await configRes.json();
+            const llmConfig = await llmRes.json();
 
             // 用后端真实配置填充表单
             if (config) {
@@ -42,6 +56,13 @@
                 numLayers = config.model_num_layers ?? 2;
                 seqLength = config.sequence_length ?? 60;
             }
+            if (llmConfig) {
+                llmApiKey = llmConfig.api_key || "";
+                llmBaseUrl = llmConfig.base_url || "";
+                // 优先使用后端持久化的设置，而不是仅靠 localStorage
+                if (llmConfig.provider) llmProvider = llmConfig.provider;
+                if (llmConfig.model) modelName = llmConfig.model;
+            }
         } catch (/** @type {any} */ e) {
             console.error("加载设备信息失败:", e);
         } finally {
@@ -49,23 +70,67 @@
         }
     }
 
-    async function saveConfig() {
-        saving = true;
-        saveMsg = "";
+    async function testConnection() {
+        testingConnection = true;
+        testMsg = "⏳ 测试中...";
         try {
-            const res = await fetch("/api/gpu/config/update", {
+            const res = await fetch("/api/config/llm/test", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    batch_size: batchSize,
-                    epochs: epochs,
-                    learning_rate: learningRate,
-                    model_hidden_dim: hiddenDim,
-                    model_num_layers: numLayers,
-                    sequence_length: seqLength,
+                    provider: llmProvider,
+                    model_name: modelName,
+                    api_key: llmApiKey,
+                    base_url: llmBaseUrl,
                 }),
             });
-            if (res.ok) {
+            const data = await res.json();
+            if (res.ok && data.status === "success") {
+                testMsg = "✅ " + data.message;
+            } else {
+                testMsg = "❌ " + (data.message || "测试失败");
+            }
+        } catch (/** @type {any} */ e) {
+            testMsg = "❌ 网络错误: " + e.message;
+        } finally {
+            testingConnection = false;
+        }
+    }
+
+    async function saveConfig() {
+        saving = true;
+        saveMsg = "";
+
+        // 保存前端本地偏好
+        localStorage.setItem("llmProvider", llmProvider);
+        localStorage.setItem("modelName", modelName);
+
+        try {
+            const [res, llmRes] = await Promise.all([
+                fetch("/api/gpu/config/update", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        batch_size: batchSize,
+                        epochs: epochs,
+                        learning_rate: learningRate,
+                        model_hidden_dim: hiddenDim,
+                        model_num_layers: numLayers,
+                        sequence_length: seqLength,
+                    }),
+                }),
+                fetch("/api/config/llm", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        api_key: llmApiKey,
+                        base_url: llmBaseUrl,
+                        provider: llmProvider,
+                        model: modelName,
+                    }),
+                }),
+            ]);
+            if (res.ok && llmRes.ok) {
                 saveMsg = "✅ 配置已保存成功";
             } else {
                 saveMsg = "❌ 保存失败";
@@ -151,15 +216,14 @@
                     >LLM 提供商</label
                 >
                 <select
+                    bind:value={llmProvider}
                     class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500/50 transition-all appearance-none"
                 >
                     <option value="ollama" class="bg-surface-900"
                         >Ollama (本地)</option
                     >
-                    <option value="deepseek" class="bg-surface-900"
-                        >DeepSeek API</option
-                    >
-                    <option value="openai" class="bg-surface-900">OpenAI</option
+                    <option value="openai" class="bg-surface-900"
+                        >OpenAI 兼容 (例如 DeepSeek 等外部 API)</option
                     >
                 </select>
             </div>
@@ -169,10 +233,64 @@
                 >
                 <input
                     type="text"
-                    value="qwen3:1.7b"
+                    bind:value={modelName}
                     class="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500/50 transition-all"
                 />
             </div>
+            {#if llmProvider === "openai"}
+                <div
+                    class="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5 mt-2 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20"
+                >
+                    <div>
+                        <label
+                            class="block text-xs text-emerald-400 mb-1.5 font-medium flex items-center gap-1"
+                        >
+                            <span>🔑</span> OpenAI API Key (密钥)
+                        </label>
+                        <input
+                            type="password"
+                            bind:value={llmApiKey}
+                            placeholder="sk-..."
+                            class="w-full bg-[#0a0c10] border border-emerald-500/30 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-emerald-500/80 transition-all"
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="block text-xs text-emerald-400 mb-1.5 font-medium flex items-center gap-1"
+                        >
+                            <span>🌐</span> Base URL (中转站/DeepSeek)
+                        </label>
+                        <input
+                            type="text"
+                            bind:value={llmBaseUrl}
+                            placeholder="例如: https://api.deepseek.com/v1"
+                            class="w-full bg-[#0a0c10] border border-emerald-500/30 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-emerald-500/80 transition-all"
+                        />
+                    </div>
+                </div>
+            {/if}
+        </div>
+
+        <!-- 测试连接区块 -->
+        <div
+            class="mt-6 flex flex-col sm:flex-row items-center justify-between border-t border-white/5 pt-5"
+        >
+            <div
+                class="text-sm {testMsg.includes('✅')
+                    ? 'text-emerald-400'
+                    : testMsg.includes('❌')
+                      ? 'text-rose-400'
+                      : 'text-white/40'}"
+            >
+                {testMsg || "在保存前可以先测试模型服务是否连通"}
+            </div>
+            <button
+                onclick={testConnection}
+                disabled={testingConnection || loading}
+                class="mt-3 sm:mt-0 px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 border border-white/10 rounded-xl text-sm font-medium text-white transition-all focus:outline-none"
+            >
+                {testingConnection ? "🔌 连接中..." : "⚡ 测试连接"}
+            </button>
         </div>
     </Card>
 
