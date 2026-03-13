@@ -82,6 +82,8 @@ class AgentOrchestrator:
           Phase 4: Portfolio Manager 最终裁定 + 知识提炼写库
         """
         # ─── SSE 打包辅助函数 ───
+        TOTAL_PHASES = 6  # 总阶段数（记忆加载/数据采集/圆桌辩论/交叉评论/PM评审/最终裁定）
+
         def _sse(role, status, content, is_chunk=False, raw_data=None, extra=None):
             payload = {"role": role, "status": status, "content": content, "is_chunk": is_chunk}
             if raw_data:
@@ -90,12 +92,22 @@ class AgentOrchestrator:
                 payload.update(extra)
             return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
+        def _phase(num, label):
+            """推送阶段进度更新 SSE 事件"""
+            return _sse("system", "phase", "", extra={
+                "event": "phase_update",
+                "phase": num,
+                "phase_label": label,
+                "total_phases": TOTAL_PHASES
+            })
+
         session_id = str(int(time.time()))
         debate = DebateEngine(max_debate_rounds=self.max_debate_rounds)
 
         # ==========================================
         # Phase 0: 加载历史记忆（OpenClaw 分级加载）
         # ==========================================
+        yield _phase(1, "加载历史记忆")
         # 分级加载：常驻 = 长期 memory.md + 近两日短期 .md + 全局规律
         memory_msg = build_memory_injection_message(symbol)
         long_term_text = read_long_term(symbol)
@@ -114,6 +126,7 @@ class AgentOrchestrator:
         # ==========================================
         # Phase 1: 数据工程师 — 提取因子底牌
         # ==========================================
+        yield _phase(2, "数据采集")
         yield _sse("Data Engineer", "typing", f"正在构建 **{symbol}** 全维市场雷达探针矩阵...\n\n")
 
         try:
@@ -143,6 +156,7 @@ class AgentOrchestrator:
         # ==========================================
         # Phase 2: 第 1 轮 — 分析师接力发言
         # ==========================================
+        yield _phase(3, "圆桌辩论")
         yield _sse(
             "Portfolio Manager", "typing",
             f"🔔 **第 {debate.current_round + 1} 轮圆桌辩论开始** — 请各位专家依次发表研判。\n\n",
@@ -191,6 +205,7 @@ class AgentOrchestrator:
         # Phase 2.5: 交叉评论 — 每个 Agent 定向点评同行观点
         # ==========================================
         if debate.should_trigger_cross_review():
+            yield _phase(4, "交叉评论")
             cr_round = debate.start_cross_review_round()
             yield _sse(
                 "Portfolio Manager", "typing",
@@ -227,10 +242,9 @@ class AgentOrchestrator:
 
                 yield _sse(agent.name, "done", "")
 
-                # 记录交叉评论到黑板（对每个同行都记录一条定向评论）
+                # 记录交叉评论到黑板（单条广播式记录，避免同一内容对每位同行重复写入）
                 cross_review_speeches[agent.name] = review_content
-                for peer_name in peers:
-                    debate.record_cross_comment(agent.name, peer_name, review_content)
+                debate.record_cross_comment(agent.name, "ALL", review_content)
                 context_messages.append({
                     "role": "assistant", "name": agent.name,
                     "content": f"[交叉评论] {review_content}"
@@ -257,7 +271,11 @@ class AgentOrchestrator:
                     agent.name, "typing",
                     f"💬 回应同行评论中...\n\n",
                     extra={"event": "rebuttal",
-                           "commenters": [c["from_agent"] for c in unreplied]}
+                           "commenters": [c["from_agent"] for c in unreplied],
+                           "comment_quotes": [
+                               {"from": c["from_agent"], "text": c["comment"][:120]}
+                               for c in unreplied
+                           ]}
                 )
 
                 rebuttal_content = ""
@@ -289,6 +307,7 @@ class AgentOrchestrator:
         # ==========================================
         # Phase 3: Portfolio Manager 初评 + 追加辩论
         # ==========================================
+        yield _phase(5, "PM评审")
         debate_round = 0
         while debate_round <= self.max_debate_rounds:
             # 检测是否有分歧（第 1 次也要检测）
@@ -366,6 +385,7 @@ class AgentOrchestrator:
         # ==========================================
         # Phase 4: 最终裁定 + 知识提炼
         # ==========================================
+        yield _phase(6, "最终裁定")
         yield _sse("Portfolio Manager", "typing", "\n\n## 📜 **最终裁定书** — 全体投票归票完毕\n\n")
 
         all_debate_recap = debate.get_board_summary()

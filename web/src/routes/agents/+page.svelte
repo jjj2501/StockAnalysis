@@ -20,6 +20,11 @@
     let consensusScore = $state(null);
     let showRawData = $state(null);
 
+    // 阶段进度指示器
+    let currentPhase = $state(0);
+    let phaseLabel = $state("");
+    let totalPhases = $state(6);
+
     onMount(() => {
         llmProvider = localStorage.getItem("llmProvider") || "null";
         modelName = localStorage.getItem("modelName") || "null";
@@ -70,6 +75,9 @@
         debateRound = 0;
         crossReviewRound = 0;
         consensusScore = null;
+        currentPhase = 0;
+        phaseLabel = "";
+        totalPhases = 6;
 
         const es = new EventSource(
             `/api/agents/${symbol}/stream?provider=${llmProvider}&model=${modelName}`,
@@ -78,6 +86,14 @@
         es.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+
+                // 阶段进度更新（任务3）
+                if (data.event === "phase_update") {
+                    currentPhase = data.phase || 0;
+                    phaseLabel = data.phase_label || "";
+                    totalPhases = data.total_phases || 6;
+                    return;
+                }
 
                 // 辩论回合分隔符
                 if (
@@ -135,13 +151,14 @@
                     return;
                 }
 
-                // 回应评论气泡 — 带评论者标签
+                // 回应评论气泡 — 带评论者标签 + 原始评论引用（任务5）
                 if (data.event === "rebuttal" && data.commenters) {
                     chatLog.push({
                         role: data.role,
                         status: data.status,
                         content: data.content,
                         commenters: data.commenters,
+                        commentQuotes: data.comment_quotes || [],
                         msgType: "rebuttal",
                         skills: [],
                     });
@@ -304,6 +321,28 @@
         {/if}
     </div>
 
+    <!-- 阶段进度指示器（任务3）— 推演进行中时显示 -->
+    {#if analyzing && currentPhase > 0}
+        <div
+            class="flex items-center gap-3 mb-4 bg-surface-800/60 rounded-xl border border-white/5 px-4 py-3 backdrop-blur-md"
+        >
+            <span class="text-xs text-white/40 shrink-0"
+                >Phase {currentPhase}/{totalPhases}</span
+            >
+            <div class="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                    class="h-full bg-gradient-to-r from-primary-500 to-indigo-500 rounded-full transition-all duration-700 ease-out"
+                    style="width:{Math.round(
+                        (currentPhase / totalPhases) * 100,
+                    )}%"
+                ></div>
+            </div>
+            <span
+                class="text-xs font-bold text-primary-400 shrink-0 tracking-wide"
+                >{phaseLabel}</span
+            >
+        </div>
+    {/if}
     <!-- 历史记忆侧边抽屉 -->
     {#if memoryPanelOpen}
         <div
@@ -438,22 +477,31 @@
 
         {#each chatLog as log}
             {#if log.role === "__divider__"}
-                <!-- 辩论回合/交叉评论分隔符 -->
-                {@const divColor =
+                <!-- 辩论回合/交叉评论分隔符（使用静态类名映射，避免 Tailwind JIT 编译遗漏） -->
+                {@const divStyles =
                     log.dividerType === "cross_review"
-                        ? "indigo"
+                        ? {
+                              line: "bg-indigo-500/20",
+                              text: "text-indigo-400 bg-indigo-500/10 border-indigo-500/30",
+                          }
                         : log.dividerType === "rebuttal"
-                          ? "cyan"
-                          : "amber"}
+                          ? {
+                                line: "bg-cyan-500/20",
+                                text: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
+                            }
+                          : {
+                                line: "bg-amber-500/20",
+                                text: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+                            }}
                 <div
                     class="flex items-center gap-3 my-4 animate-in fade-in duration-500"
                 >
-                    <div class="flex-1 h-px bg-{divColor}-500/20"></div>
+                    <div class="flex-1 h-px {divStyles.line}"></div>
                     <span
-                        class="text-xs font-bold text-{divColor}-400 bg-{divColor}-500/10 border border-{divColor}-500/30 rounded-full px-4 py-1.5 tracking-wide"
+                        class="text-xs font-bold {divStyles.text} border rounded-full px-4 py-1.5 tracking-wide"
                         >{log.content}</span
                     >
-                    <div class="flex-1 h-px bg-{divColor}-500/20"></div>
+                    <div class="flex-1 h-px {divStyles.line}"></div>
                 </div>
             {:else}
                 {@const meta = roleMeta[log.role] || {
@@ -584,12 +632,96 @@
                             prose-blockquote:border-l-4 prose-blockquote:border-emerald-500/50 prose-blockquote:bg-emerald-500/5 prose-blockquote:px-4 prose-blockquote:py-2 prose-blockquote:rounded-r-lg prose-blockquote:not-italic prose-blockquote:my-3 prose-blockquote:text-emerald-400/90 hover:prose-blockquote:bg-emerald-500/10 transition-all
                             prose-code:text-amber-300 prose-code:bg-amber-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
                             >
-                                <!-- 简易 Markdown / 行列保留 解析渲染 -->
-                                <div
-                                    class="whitespace-pre-wrap font-mono text-[14px] leading-7"
-                                >
-                                    {log.content}
-                                </div>
+                                <!-- 回应评论时的原始评论引用折叠框（任务5） -->
+                                {#if log.msgType === "rebuttal" && log.commentQuotes && log.commentQuotes.length > 0}
+                                    <details
+                                        class="mb-4 border border-white/10 rounded-lg overflow-hidden bg-black/30"
+                                    >
+                                        <summary
+                                            class="cursor-pointer text-xs font-bold text-white/40 hover:text-white/70 px-3 py-2 flex items-center gap-2 select-none transition-colors"
+                                        >
+                                            <span>💬</span> 查看原始评论 ({log
+                                                .commentQuotes.length} 条)
+                                        </summary>
+                                        <div class="px-3 pb-3 space-y-2">
+                                            {#each log.commentQuotes as quote}
+                                                <div
+                                                    class="border-l-2 border-cyan-500/40 bg-cyan-500/5 rounded-r-lg px-3 py-2 text-xs text-white/60"
+                                                >
+                                                    <span
+                                                        class="font-bold text-cyan-400/80"
+                                                        >{roleMeta[quote.from]
+                                                            ?.name ||
+                                                            quote.from}：</span
+                                                    >
+                                                    <span class="italic"
+                                                        >{quote.text}</span
+                                                    >
+                                                </div>
+                                            {/each}
+                                        </div>
+                                    </details>
+                                {/if}
+
+                                <!-- 发言内容（任务6：超过 300 字自动折叠） -->
+                                {#if log.content && log.content.length > 300 && log.status === "done"}
+                                    {@const contentId = `bubble-${log.role}-${chatLog.indexOf(log)}`}
+                                    <div id={contentId}>
+                                        <div
+                                            class="whitespace-pre-wrap font-mono text-[14px] leading-7"
+                                        >
+                                            {log.content.slice(0, 300)}...
+                                        </div>
+                                        <button
+                                            onclick={(e) => {
+                                                const container =
+                                                    e.currentTarget
+                                                        .parentElement;
+                                                const textDiv =
+                                                    container.querySelector(
+                                                        ".truncated-text",
+                                                    );
+                                                const fullDiv =
+                                                    container.querySelector(
+                                                        ".full-text",
+                                                    );
+                                                if (textDiv && fullDiv) {
+                                                    textDiv.classList.toggle(
+                                                        "hidden",
+                                                    );
+                                                    fullDiv.classList.toggle(
+                                                        "hidden",
+                                                    );
+                                                    e.currentTarget.textContent =
+                                                        fullDiv.classList.contains(
+                                                            "hidden",
+                                                        )
+                                                            ? "📖 展开全文"
+                                                            : "📕 收起";
+                                                } else {
+                                                    container.innerHTML = "";
+                                                    const full =
+                                                        document.createElement(
+                                                            "div",
+                                                        );
+                                                    full.className =
+                                                        "whitespace-pre-wrap font-mono text-[14px] leading-7";
+                                                    full.textContent =
+                                                        log.content;
+                                                    container.appendChild(full);
+                                                }
+                                            }}
+                                            class="mt-2 text-xs text-primary-400 hover:text-primary-300 transition-colors underline underline-offset-2"
+                                            >📖 展开全文</button
+                                        >
+                                    </div>
+                                {:else}
+                                    <div
+                                        class="whitespace-pre-wrap font-mono text-[14px] leading-7"
+                                    >
+                                        {log.content}
+                                    </div>
+                                {/if}
 
                                 <!-- 尾部闪烁的光标 -->
                                 {#if log.status === "typing"}

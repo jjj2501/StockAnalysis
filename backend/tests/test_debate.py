@@ -216,6 +216,8 @@ class TestCrossComments:
     def test_should_continue_dialogue(self):
         """未回复评论含分歧关键词时应继续对话"""
         board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post("B", "B 的发言", round_num=0)
         board.post_cross_comment("A", "B", "你的结论数据不支持，存疑")
 
         # 有未回复的含分歧关键词的评论
@@ -228,8 +230,37 @@ class TestCrossComments:
     def test_should_not_continue_without_conflict(self):
         """未回复评论不含分歧关键词时不应继续对话"""
         board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post("B", "B 的发言", round_num=0)
         board.post_cross_comment("A", "B", "我赞同你的中性分析")
         assert board.should_continue_dialogue() is False
+
+    def test_broadcast_cross_comment(self):
+        """广播式评论（to_agent='ALL'）应被所有非发出方 Agent 查询到"""
+        board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post("B", "B 的发言", round_num=0)
+        board.post("C", "C 的发言", round_num=0)
+        board.post_cross_comment("A", "ALL", "各位的分析都存疑")
+
+        # B 和 C 都能查到这条评论
+        assert len(board.get_comments_on("B")) == 1
+        assert len(board.get_comments_on("C")) == 1
+        # A 不应查到自己的评论
+        assert len(board.get_comments_on("A")) == 0
+
+    def test_broadcast_comment_per_agent_response(self):
+        """广播式评论的回应标记是按 Agent 粒度独立的"""
+        board = SharedBlackboard()
+        board.post("A", "A 的发言", round_num=0)
+        board.post("B", "B 的发言", round_num=0)
+        board.post("C", "C 的发言", round_num=0)
+        board.post_cross_comment("A", "ALL", "各位的分析都存疑")
+
+        # B 回应后，B 的 unreplied 应为空，C 的仍有
+        board.mark_comment_responded("A", "B")
+        assert len(board.get_unreplied_comments_on("B")) == 0
+        assert len(board.get_unreplied_comments_on("C")) == 1
 
     def test_get_peers_speeches(self):
         """能正确获取除自身以外的同行发言"""

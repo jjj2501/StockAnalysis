@@ -89,21 +89,40 @@ class SharedBlackboard:
         )
 
     def get_comments_on(self, agent_name: str) -> List[Dict]:
-        """获取所有针对指定 Agent 的交叉评论"""
-        return [c for c in self.cross_comments if c["to_agent"] == agent_name]
-
-    def get_unreplied_comments_on(self, agent_name: str) -> List[Dict]:
-        """获取所有未回复的、针对指定 Agent 的交叉评论"""
+        """获取所有针对指定 Agent 的交叉评论（含广播式评论，排除自己发出的）"""
         return [
             c for c in self.cross_comments
-            if c["to_agent"] == agent_name and not c["responded"]
+            if (c["to_agent"] == agent_name or c["to_agent"] == "ALL")
+            and c["from_agent"] != agent_name
         ]
 
-    def mark_comment_responded(self, from_agent: str, to_agent: str):
-        """标记来自 from_agent 对 to_agent 的评论为已回应"""
+    def get_unreplied_comments_on(self, agent_name: str) -> List[Dict]:
+        """获取所有未回复的、针对指定 Agent 的交叉评论（含广播式，排除自己发出的）"""
+        results = []
         for c in self.cross_comments:
-            if c["from_agent"] == from_agent and c["to_agent"] == to_agent:
-                c["responded"] = True
+            if c["from_agent"] == agent_name:
+                continue  # 排除自己发出的评论
+            if c["to_agent"] == "ALL":
+                # 广播式评论：检查该 Agent 专属的回应标记
+                if not c.get(f"responded_by_{agent_name}", False):
+                    results.append(c)
+            elif c["to_agent"] == agent_name:
+                # 直接定向评论：检查通用的 responded 字段
+                if not c.get("responded", False):
+                    results.append(c)
+        return results
+
+    def mark_comment_responded(self, from_agent: str, to_agent: str):
+        """标记来自 from_agent 对 to_agent 的评论为已回应（兼容广播式评论）"""
+        for c in self.cross_comments:
+            if c["from_agent"] == from_agent and (
+                c["to_agent"] == to_agent or c["to_agent"] == "ALL"
+            ):
+                # 广播式评论使用按 Agent 粒度的回应标记
+                if c["to_agent"] == "ALL":
+                    c[f"responded_by_{to_agent}"] = True
+                else:
+                    c["responded"] = True
 
     def get_cross_review_context(self, agent_name: str) -> str:
         """
@@ -146,14 +165,31 @@ class SharedBlackboard:
     def should_continue_dialogue(self) -> bool:
         """
         判断是否需要继续多轮对话。
-        条件：存在未回复的评论 且 评论中含有分歧信号。
+        条件：存在未被所有相关 Agent 回复的评论 且 评论中含有分歧信号。
         """
-        unreplied = [c for c in self.cross_comments if not c["responded"]]
-        if not unreplied:
+        # 收集所有已发言的 Agent 名称
+        all_agents = set(e["agent"] for e in self.sessions)
+
+        has_unreplied = False
+        for c in self.cross_comments:
+            if c["to_agent"] == "ALL":
+                # 广播式评论：检查是否有任何（非发出方的）Agent 尚未回应
+                for agent in all_agents:
+                    if agent != c["from_agent"] and not c.get(f"responded_by_{agent}", False):
+                        has_unreplied = True
+                        break
+            else:
+                if not c.get("responded", False):
+                    has_unreplied = True
+
+            if has_unreplied:
+                break
+
+        if not has_unreplied:
             return False
 
         # 检查未回复评论中是否含有分歧关键词
-        for c in unreplied:
+        for c in self.cross_comments:
             for kw in _CONFLICT_KEYWORDS:
                 if kw in c["comment"]:
                     logger.info(
